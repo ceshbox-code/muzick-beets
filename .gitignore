@@ -1,0 +1,7 @@
+*.env
+*.db
+*.log
+*.bak
+__pycache__/
+deploy.sh
+deploy.conf
