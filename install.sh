@@ -70,6 +70,7 @@ else
   cp "$HERE/config.yaml" "$CFG_FILE"
 fi
 cp "$HERE/panel.py" "$BASE_DIR/config/panel.py"
+cp "$HERE/lockrun.py" "$BASE_DIR/config/lockrun.py"
 if [ -f "$HERE/fix_tags.py" ]; then
   cp "$HERE/fix_tags.py" "$BASE_DIR/config/fix_tags.py"
 fi
