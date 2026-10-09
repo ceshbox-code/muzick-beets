@@ -16,6 +16,7 @@ COMMON=(
   -v "$CFG:/config"
   -v "$LIB_DIR:/music"
   -v "$SRC_DIR:/downloads:ro"
+  -v "$WORK_DIR:/work:rw"
 )
 
 # Сеть VPN-контейнера, если он задан и запущен (нужна для MusicBrainz).
@@ -31,7 +32,7 @@ busy() {
     echo "Уже идёт перетегирование (контейнер beets-mb). Остановить: $SELF mb-stop"
     return 0
   fi
-  if docker top beets-panel 2>/dev/null | grep -q 'beet import'; then
+  if docker top beets-panel 2>/dev/null | grep -Eq 'beet .*import|beet import'; then
     echo "В панели идёт импорт. Дождитесь окончания или остановите его в панели."
     return 0
   fi
@@ -73,13 +74,13 @@ up() {
   docker run -d --name beets --restart unless-stopped \
     -e PUID="$PUID" -e PGID="$PGID" -e TZ="$TZ_NAME" \
     -p "$WEB_PORT:8337" \
-    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" \
+    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" -v "$WORK_DIR:/work:rw" \
     "$IMAGE" >/dev/null
   docker run -d --name beets-panel --restart unless-stopped \
     --user "$PUID:$PGID" \
     -p "$PANEL_PORT:8338" \
     -e BEETSDIR=/config -e HOME=/config -e PYTHONUNBUFFERED=1 -e PANEL_PASS="$PANEL_PASS" \
-    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" \
+    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" -v "$WORK_DIR:/work:rw" \
     --entrypoint python3 "$IMAGE" /config/panel.py >/dev/null
 }
 
@@ -88,7 +89,9 @@ usage() {
 Использование: $SELF <команда> [аргументы]
 
   status             состояние контейнеров и статистика библиотеки
-  tags [папка]       импорт по существующим тегам (без интернета); папка — внутри $SRC_DIR
+  tags [папка]       импорт с копированием по тегам; папка — внутри $SRC_DIR
+  direct-tags [папка] импорт по тегам прямо в исходной папке, без копирования
+  direct-mb [папка]  импорт с MusicBrainz прямо в папке, без копирования; папка — внутри $WORK_DIR
   fix-encoding [--apply]  исправить кракозябры в тегах (без --apply только отчёт)
   artists-suggest    найти варианты написания одного исполнителя (inxs/INXS, ё/е) -> черновик соответствий
   artists-preview    показать, что изменит artist-aliases.tsv
@@ -130,8 +133,19 @@ case "$cmd" in
     ;;
   tags)
     if busy; then exit 1; fi
-    # shellcheck disable=SC2046
     beet_run import -A -q -l /config/import-all.log "/downloads/${1:-}"
+    ;;
+  direct-tags)
+    if busy; then exit 1; fi
+    rel="${1:-}"
+    case "$rel" in /*|..|../*|*/../*|*/..|./*|*/./*|.) echo "Укажите относительную папку внутри WORK_DIR без сегментов . или .." >&2; exit 2 ;; esac
+    beet_run -c /config/config-direct.yaml import -A -q -l /config/direct-import.log "/work/$rel"
+    ;;
+  direct-mb)
+    if busy; then exit 1; fi
+    rel="${1:-}"
+    case "$rel" in /*|..|../*|*/../*|*/..|./*|*/./*|.) echo "Укажите относительную папку внутри WORK_DIR без сегментов . или .." >&2; exit 2 ;; esac
+    beet_vpn_run -c /config/config-direct.yaml import -q -l /config/direct-import.log "/work/$rel"
     ;;
   fix-encoding)
     case " $* " in *" --apply "*) if busy; then exit 1; fi ;; esac
