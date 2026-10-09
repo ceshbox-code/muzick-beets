@@ -180,7 +180,7 @@ def status():
             "job": {"name": state["name"], "running": running,
                     "rc": None if (running or not p) else p.returncode,
                     "started": state["started"]},
-            "log": list(lines), "skipped": tail(LOGF), "mb": mb_status()}
+            "log": list(lines), "import_log": tail(LOGF), "mb": mb_status()}
 
 
 def folders():
@@ -212,7 +212,6 @@ pre.small{background:#f4f4f4;color:#222;height:auto;max-height:140px}
 <h2>Панель управления beets</h2>
 
 <div class="card">
-  <div class="bar"><div id="bar" style="width:0%">0%</div></div>
   <p id="nums" class="muted">загрузка…</p>
   <p id="job" class="muted"></p>
 </div>
@@ -243,7 +242,7 @@ pre.small{background:#f4f4f4;color:#222;height:auto;max-height:140px}
   <button class="run" onclick="run('duplicates')">Дубликаты</button>
   <button class="run" onclick="run('no_artist')">Без исполнителя</button>
   <button class="run" onclick="run('fetchart')">Обложки</button>
-  <button onclick="recount()">Пересчитать исходные mp3</button>
+  <button onclick="recount()">Пересчитать аудиофайлы в источнике</button>
 </div>
 
 <h3>Вывод задачи</h3><pre id="log"></pre>
@@ -271,9 +270,7 @@ async function stopJob(){ if (confirm('Остановить текущую за�
 async function recount(){ await api('/api/recount', {}); refresh(); }
 async function refresh(){
   let s; try { s = await api('/api/status'); } catch(e) { return; }
-  $('bar').style.width = s.pct.toFixed(1) + '%'; $('bar').textContent = s.pct.toFixed(1) + '%';
-  const eta = s.eta != null ? ', осталось ≈ ' + s.eta + ' мин' : '';
-  $('nums').textContent = 'Треков в библиотеке: ' + s.items + ' из ≈ ' + (s.total ?? 'считаю…') + ' аудиофайлов в источнике · альбомов: ' + s.albums + ' · скорость: ' + s.rate + ' треков/мин' + eta;
+  $('nums').textContent = 'В библиотеке: ' + s.items + ' треков · ' + s.albums + ' альбомов · изменение базы: ' + s.rate + ' треков/мин · в источнике ≈ ' + (s.total ?? 'считаю…') + ' аудиофайлов (это не процент выполнения импорта)';
   const j = s.job;
   $('job').textContent = !j.name ? 'Задач ещё не запускали' :
     (j.running ? '▶ Выполняется: ' : '✓ Последняя: ') + j.name + (j.rc != null ? ' (код ' + j.rc + ')' : '');
@@ -281,7 +278,7 @@ async function refresh(){
   $('stopbtn').disabled = !j.running;
   const log = $('log'), atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
   log.textContent = s.log.join('\n'); if (atEnd) log.scrollTop = log.scrollHeight;
-  $('skipped').textContent = s.skipped || '(пусто)';
+  $('skipped').textContent = s.import_log || '(пусто)';
   const m = s.mb;
   $('mbbar').style.width = m.pct.toFixed(1) + '%'; $('mbbar').textContent = m.pct.toFixed(1) + '%';
   $('mbnums').textContent = 'Альбомов с MusicBrainz ID: ' + m.matched + ' из ' + m.albums +
