@@ -40,7 +40,20 @@ busy() {
 
 # Скрипт исправления тегов (внутри контейнера, нужна запись в /music).
 fix_tags() {
-  docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" /config/fix_tags.py "$@"
+  if [ ! -f "$CFG/fix_tags.py" ]; then
+    echo "Команда недоступна: fix_tags.py отсутствует в репозитории и каталоге $CFG." >&2
+    echo "Остальные функции beets работают; файл библиотеки не изменён." >&2
+    return 2
+  fi
+  docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+    /config/lockrun.py /lsiopy/bin/python3 /config/fix_tags.py "$@"
+}
+
+beet_run() {
+  # Все команды через общий flock в /config/.muzick.lock; панель использует тот же файл.
+  # shellcheck disable=SC2046
+  docker run --rm -it $(vpn_net) "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+    /config/lockrun.py /lsiopy/bin/beet "$@"
 }
 
 up() {
@@ -105,8 +118,7 @@ case "$cmd" in
   tags)
     if busy; then exit 1; fi
     # shellcheck disable=SC2046
-    docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" \
-      import -A -q -l /config/import-all.log "/downloads/${1:-}"
+    beet_run import -A -q -l /config/import-all.log "/downloads/${1:-}"
     ;;
   fix-encoding)
     case " $* " in *" --apply "*) if busy; then exit 1; fi ;; esac
@@ -125,10 +137,10 @@ case "$cmd" in
   organize)
     if busy; then exit 1; fi
     echo "Предпросмотр перемещений (первые 40):"
-    { docker run --rm "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" move -p | head -n 40; } || true
+    { beet_run move -p | head -n 40; } || true
     read -r -p "Переместить файлы по новым путям? [y/N] " ans
     if [ "$ans" = y ]; then
-      docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" move
+      beet_run move
     else
       echo "Отменено."
     fi
@@ -137,8 +149,7 @@ case "$cmd" in
     [ $# -ge 1 ] || { echo "Укажите исполнителя: $SELF mb-test Accept"; exit 1; }
     if busy; then exit 1; fi
     # shellcheck disable=SC2046
-    docker run --rm -it $(vpn_net) "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" \
-      import -L "albumartist:$1"
+    beet_run import -L "albumartist:$1"
     ;;
   mb-all)
     if busy; then exit 1; fi
@@ -152,7 +163,7 @@ case "$cmd" in
       : > /config/import-mb.log
       rm -f /config/mb.done
       date +%s > /config/mb.running
-      /lsiopy/bin/beet import -L -q -l /config/import-mb.log "$@"
+      /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet import -L -q -l /config/import-mb.log "$@"
       echo $? > /config/mb.done
       rm -f /config/mb.running' sh "$@" >/dev/null
     echo "Запущено в фоне. Прогресс: веб-панель, блок «Перетегирование через MusicBrainz»."
@@ -164,11 +175,11 @@ case "$cmd" in
     ;;
   beet)
     # shellcheck disable=SC2046
-    docker run --rm -it $(vpn_net) "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" "$@"
+    beet_run "$@"
     ;;
   dups)
-    docker exec beets beet duplicates -a || true
-    docker exec beets beet duplicates || true
+    docker exec beets /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet duplicates -a || true
+    docker exec beets /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet duplicates || true
     ;;
   logs)
     for c in beets beets-panel beets-mb; do
