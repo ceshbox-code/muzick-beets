@@ -18,11 +18,12 @@ services:
     image: ${IMAGE:-lscr.io/linuxserver/beets:latest}
     container_name: beets-panel
     user: "${PUID:-1026}:${PGID:-100}"
+    env_file:
+      - ${BASE_DIR:-/volume1/docker/beets}/muzick.env
     environment:
       BEETSDIR: /config
       HOME: /config
       PYTHONUNBUFFERED: "1"
-      PANEL_PASS: ${PANEL_PASS:?Set PANEL_PASS in muzick.env}
     volumes:
       - ${BASE_DIR:-/volume1/docker/beets}/config:/config
       - ${LIB_DIR:-/volume1/music_clean}:/music
