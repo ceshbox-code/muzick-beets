@@ -1,11 +1,13 @@
 # muzick-beets
 
-Управление библиотекой beets на Synology DSM: импорт из исходной коллекции в отдельную чистую библиотеку, веб-панель и команды CLI.
+Управление библиотекой beets на Synology DSM: импорт в отдельную библиотеку или работа с файлами непосредственно в выбранной папке без копирования, веб-панель и CLI.
 
 ## Важная модель хранения
 
 - `SRC_DIR` — исходная коллекция; монтируется в контейнер как `/downloads:ro` и не должна изменяться программой.
-- `LIB_DIR` — целевая библиотека; beets копирует туда файлы по правилам из `config.yaml`.
+- `LIB_DIR` — целевая библиотека для режима импорта с копированием.
+- `WORK_DIR` — разрешённый корень для прямой работы с файлами. Монтируется как `/work` с записью; режим «без копии» использует отдельную базу `musiclibrary-direct.db` и не перемещает файлы.
+- По умолчанию `WORK_DIR` равен `SRC_DIR`, но можно указать отдельный каталог. Проверьте права UID/GID контейнера на запись в этот каталог.
 - `BASE_DIR/config` — база beets, конфигурация, логи и состояние панели.
 - Перед массовыми операциями сделайте резервную копию `musiclibrary.db` и проверьте свободное место в `LIB_DIR`.
 
@@ -14,7 +16,7 @@
 На Synology с установленным Docker/Container Manager и доступом к исходной папке:
 
 ```sh
-sudo SRC_DIR=/volume1/music LIB_DIR=/volume1/music_clean BASE_DIR=/volume1/docker/beets bash install.sh
+sudo SRC_DIR=/volume1/music LIB_DIR=/volume1/music_clean WORK_DIR=/volume1/music BASE_DIR=/volume1/docker/beets bash install.sh
 ```
 
 Подставьте реальные пути. Установщик сохраняет параметры из существующего `muzick.env`; переменные, явно заданные в команде, имеют приоритет. Пароль панели хранится в `BASE_DIR/muzick.env` с правами 600.
@@ -25,10 +27,25 @@ sudo SRC_DIR=/volume1/music LIB_DIR=/volume1/music_clean BASE_DIR=/volume1/docke
 sudo /volume1/docker/beets/muzick.sh status
 sudo /volume1/docker/beets/muzick.sh help
 sudo /volume1/docker/beets/muzick.sh dups
+sudo /volume1/docker/beets/muzick.sh direct-tags "Accept/Heavy Ballads cd1"
 sudo /volume1/docker/beets/muzick.sh logs
 ```
 
+## Работа непосредственно в папке
+
+В веб-панели выберите карточку «Работа в выбранной папке». Этот режим использует `/work`, отдельную базу `musiclibrary-direct.db` и конфигурацию `config-direct.yaml` с `copy: no` и `move: no`. Файлы не копируются в `LIB_DIR` и не перекладываются в структуру каталогов beets; если включена запись тегов, метаданные могут быть изменены в самих файлах. Начните с небольшой тестовой папки и резервной копии.
+
+Корень `WORK_DIR` задаётся при установке. Для доступа к вложенным каталогам панель показывает папки относительно этого корня. Команды CLI:
+
+```sh
+sudo /volume1/docker/beets/muzick.sh direct-tags "Artist/Album"
+sudo /volume1/docker/beets/muzick.sh direct-mb "Artist/Album"
+```
+
+`direct-tags` отключает автоматическое сопоставление MusicBrainz и использует текущие теги; `direct-mb` выполняет сопоставление с MusicBrainz. Оба режима работают без копирования и используют отдельную базу. Доступ к файлам должен быть разрешён пользователю контейнера; установщик намеренно не меняет владельца всего `WORK_DIR`.
+
 ## Панель и безопасность
+
 
 Панель использует Basic Auth. Не публикуйте её напрямую в Интернет: Basic Auth без TLS не шифрует пароль. В Compose привязка панели сделана к loopback; для удалённого доступа используйте HTTPS reverse proxy с дополнительным ограничением доступа. В shell-установке проверьте firewall/маршрутизацию и не открывайте порт 8338 наружу.
 
