@@ -1,17 +1,33 @@
 services:
   beets:
-    image: lscr.io/linuxserver/beets:latest
+    image: ${IMAGE:-lscr.io/linuxserver/beets:latest}
     container_name: beets
     environment:
-      - PUID=1026
-      - PGID=100
-      - TZ=Europe/Berlin
+      PUID: ${PUID:-1026}
+      PGID: ${PGID:-100}
+      TZ: ${TZ_NAME:-Europe/Berlin}
     volumes:
-      - /volume1/docker/beets/config:/config
-      - /volume1/music_clean:/music
-      - /volume1/music:/downloads:ro
+      - ${BASE_DIR:-/volume1/docker/beets}/config:/config
+      - ${LIB_DIR:-/volume1/music_clean}:/music
+      - ${SRC_DIR:-/volume1/music}:/downloads:ro
     ports:
-      - 8337:8337
+      - "${WEB_PORT:-8337}:8337"
+    restart: unless-stopped
+
+  beets-panel:
+    image: ${IMAGE:-lscr.io/linuxserver/beets:latest}
+    container_name: beets-panel
+    user: "${PUID:-1026}:${PGID:-100}"
+    environment:
+      BEETSDIR: /config
+      HOME: /config
+      PYTHONUNBUFFERED: "1"
+      PANEL_PASS: ${PANEL_PASS:?Set PANEL_PASS in muzick.env}
+    volumes:
+      - ${BASE_DIR:-/volume1/docker/beets}/config:/config
+      - ${LIB_DIR:-/volume1/music_clean}:/music
+      - ${SRC_DIR:-/volume1/music}:/downloads:ro
     ports:
-      - 8337:8337
+      - "127.0.0.1:${PANEL_PORT:-8338}:8338"
+    entrypoint: ["python3", "/config/panel.py"]
     restart: unless-stopped
