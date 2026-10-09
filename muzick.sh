@@ -50,7 +50,13 @@ fix_tags() {
 }
 
 beet_run() {
-  # Все команды через общий flock в /config/.muzick.lock; панель использует тот же файл.
+  # Без VPN: локальные команды и импорт по готовым тегам.
+  docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+    /config/lockrun.py /lsiopy/bin/beet "$@"
+}
+
+beet_vpn_run() {
+  # MusicBrainz-запросы идут через VPN, но база остаётся общей.
   # shellcheck disable=SC2046
   docker run --rm -it $(vpn_net) "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
     /config/lockrun.py /lsiopy/bin/beet "$@"
@@ -149,7 +155,7 @@ case "$cmd" in
     [ $# -ge 1 ] || { echo "Укажите исполнителя: $SELF mb-test Accept"; exit 1; }
     if busy; then exit 1; fi
     # shellcheck disable=SC2046
-    beet_run import -L "albumartist:$1"
+    beet_vpn_run import -L "albumartist:$1"
     ;;
   mb-all)
     if busy; then exit 1; fi
@@ -174,8 +180,7 @@ case "$cmd" in
     echo "Остановлено."
     ;;
   beet)
-    # shellcheck disable=SC2046
-    beet_run "$@"
+    beet_vpn_run "$@"
     ;;
   dups)
     docker exec beets /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet duplicates -a || true
