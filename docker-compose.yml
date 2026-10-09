@@ -29,6 +29,7 @@ services:
       - ${BASE_DIR:-/volume1/docker/beets}/config:/config
       - ${LIB_DIR:-/volume1/music_clean}:/music
       - ${SRC_DIR:-/volume1/music}:/downloads:ro
+      - ${WORK_DIR:-/volume1/music}:/work:rw
     ports:
       - "127.0.0.1:${PANEL_PORT:-8338}:8338"
     entrypoint: ["python3", "/config/panel.py"]
