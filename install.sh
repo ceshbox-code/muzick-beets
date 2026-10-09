@@ -37,7 +37,7 @@ die() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || die "Docker не найден (установите Container Manager в DSM)"
 [ -d "$SRC_DIR" ] || die "нет папки с музыкой: $SRC_DIR (задайте SRC_DIR=...)"
 mkdir -p "$WORK_DIR" || die "не удалось создать рабочую папку: $WORK_DIR"
-for f in muzick.sh panel.py config.yaml; do
+for f in muzick.sh panel.py config.yaml config-direct.yaml; do
   [ -f "$HERE/$f" ] || die "нет файла $f рядом с install.sh"
 done
 # fix_tags.py использовался в старых версиях, но отсутствует в текущем репозитории.
