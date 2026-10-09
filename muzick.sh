@@ -16,6 +16,7 @@ COMMON=(
   -v "$CFG:/config"
   -v "$LIB_DIR:/music"
   -v "$SRC_DIR:/downloads:ro"
+  -v "$WORK_DIR:/work:rw"
 )
 
 # Сеть VPN-контейнера, если он задан и запущен (нужна для MusicBrainz).
@@ -31,7 +32,7 @@ busy() {
     echo "Уже идёт перетегирование (контейнер beets-mb). Остановить: $SELF mb-stop"
     return 0
   fi
-  if docker top beets-panel 2>/dev/null | grep -q 'beet import'; then
+  if docker top beets-panel 2>/dev/null | grep -Eq 'beet .*import|beet import'; then
     echo "В панели идёт импорт. Дождитесь окончания или остановите его в панели."
     return 0
   fi
@@ -40,7 +41,32 @@ busy() {
 
 # Скрипт исправления тегов (внутри контейнера, нужна запись в /music).
 fix_tags() {
-  docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" /config/fix_tags.py "$@"
+  if [ ! -f "$CFG/fix_tags.py" ]; then
+    echo "Команда недоступна: fix_tags.py отсутствует в репозитории и каталоге $CFG." >&2
+    echo "Остальные функции beets работают; файл библиотеки не изменён." >&2
+    return 2
+  fi
+  docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+    /config/lockrun.py /lsiopy/bin/python3 /config/fix_tags.py "$@"
+}
+
+beet_run() {
+  # Интерактивные команды без VPN.
+  docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+    /config/lockrun.py /lsiopy/bin/beet "$@"
+}
+
+beet_run_plain() {
+  # Без TTY — для перенаправления вывода и конвейеров.
+  docker run --rm "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+    /config/lockrun.py /lsiopy/bin/beet "$@"
+}
+
+beet_vpn_run() {
+  # MusicBrainz-запросы идут через VPN, но база остаётся общей.
+  # shellcheck disable=SC2046
+  docker run --rm -it $(vpn_net) "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+    /config/lockrun.py /lsiopy/bin/beet "$@"
 }
 
 up() {
@@ -53,8 +79,8 @@ up() {
   docker run -d --name beets-panel --restart unless-stopped \
     --user "$PUID:$PGID" \
     -p "$PANEL_PORT:8338" \
-    -e BEETSDIR=/config -e HOME=/config -e PYTHONUNBUFFERED=1 -e PANEL_PASS="$PANEL_PASS" \
-    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" \
+    -e BEETSDIR=/config -e HOME=/config -e PYTHONUNBUFFERED=1 -e PANEL_PASS="$PANEL_PASS" -e WORK_DIR_HOST="$WORK_DIR" \
+    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" -v "$WORK_DIR:/work:rw" \
     --entrypoint python3 "$IMAGE" /config/panel.py >/dev/null
 }
 
@@ -63,7 +89,9 @@ usage() {
 Использование: $SELF <команда> [аргументы]
 
   status             состояние контейнеров и статистика библиотеки
-  tags [папка]       импорт по существующим тегам (без интернета); папка — внутри $SRC_DIR
+  tags [папка]       импорт с копированием по тегам; папка — внутри $SRC_DIR
+  direct-tags [папка] импорт по тегам прямо в исходной папке, без копирования
+  direct-mb [папка]  импорт с MusicBrainz прямо в папке, без копирования; папка — внутри $WORK_DIR
   fix-encoding [--apply]  исправить кракозябры в тегах (без --apply только отчёт)
   artists-suggest    найти варианты написания одного исполнителя (inxs/INXS, ё/е) -> черновик соответствий
   artists-preview    показать, что изменит artist-aliases.tsv
@@ -73,7 +101,8 @@ usage() {
   mb-all [запрос]    перетегирование всей библиотеки в фоне (прогресс в веб-панели)
   mb-stop            остановить перетегирование
   beet <аргументы>   любая команда beet (через VPN, если он запущен), например: beet import -s /downloads/Папка
-  dups               дубликаты альбомов и треков
+  dups               дубликаты альбомов и треков по правилам beets
+  dups-audit         read-only аудит повторяющихся записей SQLite
   logs               логи контейнеров
   up                 пересоздать контейнеры beets и beets-panel
   update             скачать свежий образ и пересоздать контейнеры
@@ -104,9 +133,19 @@ case "$cmd" in
     ;;
   tags)
     if busy; then exit 1; fi
-    # shellcheck disable=SC2046
-    docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" \
-      import -A -q -l /config/import-all.log "/downloads/${1:-}"
+    beet_run import -A -q -l /config/import-all.log "/downloads/${1:-}"
+    ;;
+  direct-tags)
+    if busy; then exit 1; fi
+    rel="${1:-}"
+    case "$rel" in /*|..|../*|*/../*|*/..|./*|*/./*|.) echo "Укажите относительную папку внутри WORK_DIR без сегментов . или .." >&2; exit 2 ;; esac
+    beet_run -c /config/config-direct.yaml import -A -q -l /config/direct-import.log "/work/$rel"
+    ;;
+  direct-mb)
+    if busy; then exit 1; fi
+    rel="${1:-}"
+    case "$rel" in /*|..|../*|*/../*|*/..|./*|*/./*|.) echo "Укажите относительную папку внутри WORK_DIR без сегментов . или .." >&2; exit 2 ;; esac
+    beet_vpn_run -c /config/config-direct.yaml import -q -l /config/direct-import.log "/work/$rel"
     ;;
   fix-encoding)
     case " $* " in *" --apply "*) if busy; then exit 1; fi ;; esac
@@ -125,10 +164,10 @@ case "$cmd" in
   organize)
     if busy; then exit 1; fi
     echo "Предпросмотр перемещений (первые 40):"
-    { docker run --rm "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" move -p | head -n 40; } || true
+    { beet_run_plain move -p | head -n 40; } || true
     read -r -p "Переместить файлы по новым путям? [y/N] " ans
     if [ "$ans" = y ]; then
-      docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" move
+      beet_run move
     else
       echo "Отменено."
     fi
@@ -137,8 +176,7 @@ case "$cmd" in
     [ $# -ge 1 ] || { echo "Укажите исполнителя: $SELF mb-test Accept"; exit 1; }
     if busy; then exit 1; fi
     # shellcheck disable=SC2046
-    docker run --rm -it $(vpn_net) "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" \
-      import -L "albumartist:$1"
+    beet_vpn_run import -L "albumartist:$1"
     ;;
   mb-all)
     if busy; then exit 1; fi
@@ -152,7 +190,7 @@ case "$cmd" in
       : > /config/import-mb.log
       rm -f /config/mb.done
       date +%s > /config/mb.running
-      /lsiopy/bin/beet import -L -q -l /config/import-mb.log "$@"
+      /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet import -L -q -l /config/import-mb.log "$@"
       echo $? > /config/mb.done
       rm -f /config/mb.running' sh "$@" >/dev/null
     echo "Запущено в фоне. Прогресс: веб-панель, блок «Перетегирование через MusicBrainz»."
@@ -163,12 +201,15 @@ case "$cmd" in
     echo "Остановлено."
     ;;
   beet)
-    # shellcheck disable=SC2046
-    docker run --rm -it $(vpn_net) "${COMMON[@]}" --entrypoint /lsiopy/bin/beet "$IMAGE" "$@"
+    beet_vpn_run "$@"
     ;;
   dups)
-    docker exec beets beet duplicates -a || true
-    docker exec beets beet duplicates || true
+    docker exec beets /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet duplicates -a || true
+    docker exec beets /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet duplicates || true
+    ;;
+  dups-audit)
+    docker run --rm "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+      /config/lockrun.py /lsiopy/bin/python3 /config/diagnose_duplicates.py
     ;;
   logs)
     for c in beets beets-panel beets-mb; do

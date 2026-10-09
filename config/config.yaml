@@ -1,0 +1,33 @@
+directory: /music
+library: /config/musiclibrary.db
+
+plugins: chroma fetchart embedart duplicates edit info web
+
+import:
+  copy: yes
+  write: yes
+  autotag: yes
+  timid: no
+  log: /config/skipped.log
+  quiet_fallback: skip
+
+chroma:
+  auto: yes
+
+fetchart:
+  auto: yes
+embedart:
+  auto: yes
+
+id3v23: yes
+
+paths:
+  default: $albumartist/$album%aunique{}/$track - $title
+  comp: Compilations/$album%aunique{}/$track - $title
+  singleton: Non-Album/$artist/$title
+
+web:
+  host: 0.0.0.0
+  port: 8337
+
+ignore: [".*", "*~", "System Volume Information", "lost+found", "@eaDir", "#recycle"]
