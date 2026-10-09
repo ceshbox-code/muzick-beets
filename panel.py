@@ -1,8 +1,11 @@
 import os, sys, json, time, shutil, signal, sqlite3, base64, threading, subprocess, fcntl
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
 
-SRC, DB, LOGF = "/downloads", "/config/musiclibrary.db", "/config/import-all.log"
+SRC, WORK = "/downloads", "/work"
+DB, DIRECT_DB, LOGF = "/config/musiclibrary.db", "/config/musiclibrary-direct.db", "/config/import-all.log"
+DIRECT_CONFIG = "/config/config-direct.yaml"
 MB_RUN, MB_DONE, MB_LOG = "/config/mb.running", "/config/mb.done", "/config/import-mb.log"
 PASS = os.environ.get("PANEL_PASS", "")
 BEET = shutil.which("beet") or "/lsiopy/bin/beet"
@@ -36,9 +39,9 @@ def count_src():
     total["n"] = n
 
 
-def db_counts():
+def db_counts(db=DB):
     try:
-        con = sqlite3.connect("file:%s?mode=ro" % DB, uri=True, timeout=5)
+        con = sqlite3.connect("file:%s?mode=ro" % db, uri=True, timeout=5)
         try:
             return (con.execute("select count(*) from items").fetchone()[0],
                     con.execute("select count(*) from albums").fetchone()[0])
@@ -46,6 +49,37 @@ def db_counts():
             con.close()
     except Exception:
         return 0, 0
+
+
+def db_health():
+    out = {"no_artist": 0, "no_title": 0, "no_album": 0, "no_albumartist": 0,
+           "duplicate_track_groups": 0, "duplicate_album_groups": 0,
+           "missing_mb_trackid": 0, "missing_mb_albumid": 0}
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % DB, uri=True, timeout=5)
+        try:
+            row = con.execute("""select
+              sum(case when trim(coalesce(artist,''))='' then 1 else 0 end),
+              sum(case when trim(coalesce(title,''))='' then 1 else 0 end),
+              sum(case when trim(coalesce(album,''))='' then 1 else 0 end),
+              sum(case when trim(coalesce(albumartist,''))='' then 1 else 0 end),
+              sum(case when trim(coalesce(mb_trackid,''))='' then 1 else 0 end),
+              sum(case when trim(coalesce(mb_albumid,''))='' then 1 else 0 end)
+              from items""").fetchone()
+            for key, value in zip(("no_artist", "no_title", "no_album", "no_albumartist",
+                                   "missing_mb_trackid", "missing_mb_albumid"), row):
+                out[key] = value or 0
+            out["duplicate_track_groups"] = con.execute("""select count(*) from (
+              select 1 from items where trim(coalesce(artist,''))<>'' and trim(coalesce(title,''))<>''
+              group by lower(trim(artist)), lower(trim(title)) having count(*)>1)""").fetchone()[0]
+            out["duplicate_album_groups"] = con.execute("""select count(*) from (
+              select 1 from albums where trim(coalesce(albumartist,''))<>'' and trim(coalesce(album,''))<>''
+              group by lower(trim(albumartist)), lower(trim(album)) having count(*)>1)""").fetchone()[0]
+        finally:
+            con.close()
+    except Exception:
+        pass
+    return out
 
 
 def tail(path, n=12):
@@ -114,16 +148,23 @@ def reader(proc):
 
 
 def start(job, folder):
-    if job not in JOBS:
+    direct = job in DIRECT_JOBS
+    table = DIRECT_JOBS if direct else JOBS
+    if job not in table:
         return {"error": "неизвестная задача"}, 400
-    title, args, needs_path = JOBS[job]
+    title, args, needs_path = table[job]
     args = list(args)
+    root = os.path.realpath(WORK if direct else SRC)
     if needs_path:
-        path = os.path.realpath(os.path.join(SRC, folder)) if folder else SRC
-        if os.path.commonpath([path, SRC]) != SRC or not os.path.isdir(path):
+        try:
+            path = os.path.realpath(os.path.join(root, folder)) if folder else root
+            if os.path.commonpath([path, root]) != root or not os.path.isdir(path):
+                return {"error": "папка должна находиться внутри разрешённого корня"}, 400
+        except (ValueError, OSError):
             return {"error": "недопустимая папка"}, 400
         args.append(path)
-        title += " — " + (folder or "вся коллекция")
+        title += " — " + (folder or "вся папка")
+    command = [BEET, "-c", DIRECT_CONFIG] + args if direct else [BEET] + args
     with lock:
         p = state["proc"]
         if p and p.poll() is None:
@@ -136,8 +177,8 @@ def start(job, folder):
             return {"error": "Другая задача работает с базой beets через CLI или панель"}, 409
         try:
             lines.clear()
-            lines.append("$ beet " + " ".join(args))
-            proc = subprocess.Popen([BEET] + args, stdin=subprocess.DEVNULL,
+            lines.append("$ " + " ".join(command))
+            proc = subprocess.Popen(command, stdin=subprocess.DEVNULL,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     text=True, encoding="utf-8", errors="replace",
                                     bufsize=1, start_new_session=True)
@@ -159,7 +200,8 @@ def stop():
 
 
 def status():
-    items, albums = db_counts()
+    items, albums = db_counts(DB)
+    direct_items, direct_albums = db_counts(DIRECT_DB)
     now = time.time()
     if not samples or now - samples[-1][0] > 5:
         samples.append((now, items))
@@ -168,28 +210,30 @@ def status():
     rate = 0.0
     if len(samples) > 1 and now > samples[0][0]:
         rate = (items - samples[0][1]) / (now - samples[0][0]) * 60
-    t = total["n"]
     p = state["proc"]
     running = bool(p and p.poll() is None)
-    eta = None
-    if t and rate > 0 and items < t:
-        eta = round((t - items) / rate)
-    return {"total": t, "items": items, "albums": albums,
-            "pct": min(100, items * 100 / t) if t else 0,
-            "rate": round(rate), "eta": eta,
+    return {"items": items, "albums": albums, "rate": round(rate),
             "job": {"name": state["name"], "running": running,
                     "rc": None if (running or not p) else p.returncode,
                     "started": state["started"]},
-            "log": list(lines), "import_log": tail(LOGF), "mb": mb_status()}
+            "log": list(lines), "import_log": tail(LOGF), "mb": mb_status(),
+            "health": db_health(), "direct_items": direct_items, "direct_albums": direct_albums,
+            "direct_log": tail("/config/direct-import.log")}
 
 
-def folders():
+def folders(mode="import"):
+    root = os.path.realpath(WORK if mode == "direct" else SRC)
+    found = []
     try:
-        return sorted(d for d in os.listdir(SRC)
-                      if os.path.isdir(os.path.join(SRC, d))
-                      and d not in SKIP_DIRS and not d.startswith("."))
+        for current, dirs, _files in os.walk(root):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
+            for d in dirs:
+                found.append(os.path.relpath(os.path.join(current, d), root))
+                if len(found) >= 3000:
+                    return sorted(found)
     except OSError:
         return []
+    return sorted(found)
 
 
 PAGE = r"""<!doctype html><html lang="ru"><meta charset="utf-8">
@@ -324,8 +368,9 @@ class H(BaseHTTPRequestHandler):
             return
         if self.path == "/api/status":
             self._json(status())
-        elif self.path == "/api/folders":
-            self._json(folders())
+        elif urlparse(self.path).path == "/api/folders":
+            mode = parse_qs(urlparse(self.path).query).get("mode", ["import"])[0]
+            self._json(folders("direct" if mode == "direct" else "import"))
         else:
             self._send(PAGE, "text/html; charset=utf-8")
 
