@@ -1,4 +1,4 @@
-import os, sys, json, time, shutil, signal, sqlite3, base64, threading, subprocess
+import os, sys, json, time, shutil, signal, sqlite3, base64, threading, subprocess, fcntl
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -21,7 +21,7 @@ JOBS = {
 }
 
 lock = threading.Lock()
-state = {"proc": None, "name": "", "started": 0.0}
+state = {"proc": None, "name": "", "started": 0.0, "lock_handle": None}
 lines = deque(maxlen=600)
 samples = deque()
 total = {"n": None}
@@ -32,7 +32,7 @@ def count_src():
     n = 0
     for root, dirs, files in os.walk(SRC):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-        n += sum(f.lower().endswith(".mp3") for f in files)
+        n += sum(f.lower().endswith((".mp3", ".flac", ".m4a", ".mp4", ".ogg", ".opus", ".wav", ".aiff", ".aif", ".wma", ".ape", ".wv")) for f in files)
     total["n"] = n
 
 
@@ -88,7 +88,7 @@ def mb_status():
         pass
     try:
         with open(MB_LOG, encoding="utf-8", errors="replace") as f:
-            out["skipped"] = sum(1 for l in f if l.strip())
+            out["skipped"] = 0  # строки лога не равны количеству пропущенных альбомов
     except OSError:
         pass
     try:
@@ -98,7 +98,7 @@ def mb_status():
     except OSError:
         pass
     if out["albums"]:
-        out["pct"] = min(100, (out["matched"] + out["skipped"]) * 100 / out["albums"])
+        out["pct"] = min(100, out["matched"] * 100 / out["albums"])
     return out
 
 
@@ -107,6 +107,15 @@ def reader(proc):
         lines.append(raw.rstrip("\n"))
     proc.wait()
     lines.append("— завершено, код %s —" % proc.returncode)
+    handle = None
+    with lock:
+        handle = state.get("lock_handle")
+        state["lock_handle"] = None
+    if handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
 
 
 def start(job, folder):
@@ -124,13 +133,24 @@ def start(job, folder):
         p = state["proc"]
         if p and p.poll() is None:
             return {"error": "уже выполняется другая задача"}, 409
-        lines.clear()
-        lines.append("$ beet " + " ".join(args))
-        proc = subprocess.Popen([BEET] + args, stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, encoding="utf-8", errors="replace",
-                                bufsize=1, start_new_session=True)
-        state.update(proc=proc, name=title, started=time.time())
+        handle = open("/config/.muzick.lock", "a", encoding="utf-8")
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            handle.close()
+            return {"error": "Другая задача работает с базой beets через CLI или панель"}, 409
+        try:
+            lines.clear()
+            lines.append("$ beet " + " ".join(args))
+            proc = subprocess.Popen([BEET] + args, stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, encoding="utf-8", errors="replace",
+                                    bufsize=1, start_new_session=True)
+            state.update(proc=proc, name=title, started=time.time(), lock_handle=handle)
+        except Exception:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
+            raise
     threading.Thread(target=reader, args=(proc,), daemon=True).start()
     return {"ok": True}, 200
 
@@ -232,7 +252,7 @@ pre.small{background:#f4f4f4;color:#222;height:auto;max-height:140px}
 </div>
 
 <h3>Вывод задачи</h3><pre id="log"></pre>
-<h3>Пропущенное (import-all.log)</h3><pre id="skipped" class="small"></pre>
+<h3>Журнал импорта (import-all.log)</h3><pre id="skipped" class="small"></pre>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -258,8 +278,7 @@ async function refresh(){
   let s; try { s = await api('/api/status'); } catch(e) { return; }
   $('bar').style.width = s.pct.toFixed(1) + '%'; $('bar').textContent = s.pct.toFixed(1) + '%';
   const eta = s.eta != null ? ', осталось ≈ ' + s.eta + ' мин' : '';
-  $('nums').textContent = 'Треков в библиотеке: ' + s.items + ' из ' + (s.total ?? 'считаю…') +
-    ' · альбомов: ' + s.albums + ' · скорость: ' + s.rate + ' треков/мин' + eta;
+  $('nums').textContent = 'Треков в библиотеке: ' + s.items + ' из ≈ ' + (s.total ?? 'считаю…') + ' аудиофайлов в источнике · альбомов: ' + s.albums + ' · скорость: ' + s.rate + ' треков/мин' + eta;
   const j = s.job;
   $('job').textContent = !j.name ? 'Задач ещё не запускали' :
     (j.running ? '▶ Выполняется: ' : '✓ Последняя: ') + j.name + (j.rc != null ? ' (код ' + j.rc + ')' : '');
@@ -270,8 +289,8 @@ async function refresh(){
   $('skipped').textContent = s.skipped || '(пусто)';
   const m = s.mb;
   $('mbbar').style.width = m.pct.toFixed(1) + '%'; $('mbbar').textContent = m.pct.toFixed(1) + '%';
-  $('mbnums').textContent = 'Альбомов обработано ≈ ' + (m.matched + m.skipped) + ' из ' + m.albums +
-    ' · совпало с MusicBrainz: ' + m.matched + ' · пропущено или оставлено как есть: ' + m.skipped;
+  $('mbnums').textContent = 'Альбомов с MusicBrainz ID: ' + m.matched + ' из ' + m.albums +
+    ' · это показатель привязки, не точный процент обработанных альбомов';
   const idle = m.idle != null ? ' · последняя активность ' + Math.round(m.idle / 60) + ' мин назад' : '';
   $('mbstate').textContent = m.running ? '▶ Идёт перетегирование' + idle :
     (m.rc !== null ? '✓ Завершено (код ' + m.rc + ')' : 'Не запущено');
