@@ -10,6 +10,7 @@ services:
       - ${BASE_DIR:-/volume1/docker/beets}/config:/config
       - ${LIB_DIR:-/volume1/music_clean}:/music
       - ${SRC_DIR:-/volume1/music}:/downloads:ro
+      - ${WORK_DIR:-/volume1/music}:/work:rw
     ports:
       - "${WEB_PORT:-8337}:8337"
     restart: unless-stopped
