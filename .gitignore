@@ -1,7 +1,19 @@
+# Secrets and local deployment settings
 *.env
-*.db
-*.log
-*.bak
-__pycache__/
 deploy.sh
 deploy.conf
+
+# beets database, backups, logs and runtime state
+*.db
+*.db-*
+*.db.*
+*.bak
+*.bak-*
+*.log
+*.pickle
+*.lock
+*.tsv
+/config/**
+!/config/.gitkeep
+__pycache__/
+*.py[cod]

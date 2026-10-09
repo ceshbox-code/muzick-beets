@@ -7,15 +7,26 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-SRC_DIR="${SRC_DIR:-/volume1/music}"              # исходная (перепутанная) коллекция, монтируется только для чтения
-LIB_DIR="${LIB_DIR:-/volume1/music_clean}"        # сюда beets собирает упорядоченную библиотеку
-BASE_DIR="${BASE_DIR:-/volume1/docker/beets}"     # конфиг, база beets, панель
-VPN_CONTAINER="${VPN_CONTAINER-VPN}"              # имя VPN-контейнера; пусто = без VPN
-PANEL_PORT="${PANEL_PORT:-8338}"
-WEB_PORT="${WEB_PORT:-8337}"
-IMAGE="${IMAGE:-lscr.io/linuxserver/beets:latest}"
-TZ_NAME="${TZ_NAME:-Europe/Berlin}"
-PANEL_PASS="${PANEL_PASS:-}"
+ENV_FILE="${BASE_DIR:-/volume1/docker/beets}/muzick.env"
+# При повторном запуске сохраняем настройки из предыдущей установки.
+# Значения, переданные в окружении текущего запуска, имеют приоритет.
+OV_SRC="${SRC_DIR-}"; OV_LIB="${LIB_DIR-}"; OV_WORK="${WORK_DIR-}"; OV_BASE="${BASE_DIR-}"
+OV_VPN_SET="${VPN_CONTAINER+x}"; OV_VPN="${VPN_CONTAINER-}"; OV_PANEL_PORT="${PANEL_PORT-}"; OV_WEB_PORT="${WEB_PORT-}"
+OV_IMAGE="${IMAGE-}"; OV_TZ="${TZ_NAME-}"; OV_PASS="${PANEL_PASS-}"
+if [ -f "$ENV_FILE" ]; then
+  # Файл создаётся этим установщиком и имеет права 600.
+  . "$ENV_FILE"
+fi
+SRC_DIR="${OV_SRC:-${SRC_DIR:-/volume1/music}}"              # исходная коллекция, только чтение
+LIB_DIR="${OV_LIB:-${LIB_DIR:-/volume1/music_clean}}"        # чистая библиотека
+WORK_DIR="${OV_WORK:-${WORK_DIR:-$SRC_DIR}}"                # корень для работы без копирования
+BASE_DIR="${OV_BASE:-${BASE_DIR:-/volume1/docker/beets}}"
+if [ "$OV_VPN_SET" = x ]; then VPN_CONTAINER="$OV_VPN"; else VPN_CONTAINER="${VPN_CONTAINER:-VPN}"; fi
+PANEL_PORT="${OV_PANEL_PORT:-${PANEL_PORT:-8338}}"
+WEB_PORT="${OV_WEB_PORT:-${WEB_PORT:-8337}}"
+IMAGE="${OV_IMAGE:-${IMAGE:-lscr.io/linuxserver/beets:latest}}"
+TZ_NAME="${OV_TZ:-${TZ_NAME:-Europe/Berlin}}"
+PANEL_PASS="${OV_PASS:-${PANEL_PASS:-}}"
 RUN_USER="${RUN_USER:-${SUDO_USER:-}}"
 FORCE_CONFIG="${FORCE_CONFIG:-0}"
 
@@ -25,9 +36,12 @@ die() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "запустите от root: sudo bash install.sh"
 command -v docker >/dev/null 2>&1 || die "Docker не найден (установите Container Manager в DSM)"
 [ -d "$SRC_DIR" ] || die "нет папки с музыкой: $SRC_DIR (задайте SRC_DIR=...)"
-for f in muzick.sh panel.py fix_tags.py config.yaml; do
+mkdir -p "$WORK_DIR" || die "не удалось создать рабочую папку: $WORK_DIR"
+for f in muzick.sh panel.py config.yaml config-direct.yaml; do
   [ -f "$HERE/$f" ] || die "нет файла $f рядом с install.sh"
 done
+# fix_tags.py использовался в старых версиях, но отсутствует в текущем репозитории.
+# Не блокируем базовую установку; команды fix-tags явно сообщат о недоступности.
 case "$PANEL_PASS" in
   *\'*|*\"*|*\ *) die "пароль не должен содержать кавычки и пробелы" ;;
 esac
@@ -44,7 +58,7 @@ echo "Пользователь для файлов: UID=$PUID GID=$PGID"
 
 # --- каталоги ---
 say "Каталоги"
-mkdir -p "$LIB_DIR" "$BASE_DIR/config"
+mkdir -p "$LIB_DIR" "$WORK_DIR" "$BASE_DIR/config"
 chown "$PUID:$PGID" "$LIB_DIR"
 chown -R "$PUID:$PGID" "$BASE_DIR"
 
@@ -57,8 +71,13 @@ else
   if [ -f "$CFG_FILE" ]; then cp "$CFG_FILE" "$CFG_FILE.bak"; fi
   cp "$HERE/config.yaml" "$CFG_FILE"
 fi
+cp "$HERE/config-direct.yaml" "$BASE_DIR/config/config-direct.yaml"
 cp "$HERE/panel.py" "$BASE_DIR/config/panel.py"
-cp "$HERE/fix_tags.py" "$BASE_DIR/config/fix_tags.py"
+cp "$HERE/lockrun.py" "$BASE_DIR/config/lockrun.py"
+cp "$HERE/diagnose_duplicates.py" "$BASE_DIR/config/diagnose_duplicates.py"
+if [ -f "$HERE/fix_tags.py" ]; then
+  cp "$HERE/fix_tags.py" "$BASE_DIR/config/fix_tags.py"
+fi
 cp "$HERE/muzick.sh" "$BASE_DIR/muzick.sh"
 chmod 755 "$BASE_DIR/muzick.sh"
 chown -R "$PUID:$PGID" "$BASE_DIR/config" "$BASE_DIR/muzick.sh"
@@ -77,6 +96,7 @@ fi
 {
   printf 'SRC_DIR=%q\n' "$SRC_DIR"
   printf 'LIB_DIR=%q\n' "$LIB_DIR"
+  printf 'WORK_DIR=%q\n' "$WORK_DIR"
   printf 'BASE_DIR=%q\n' "$BASE_DIR"
   printf 'VPN_CONTAINER=%q\n' "$VPN_CONTAINER"
   printf 'PANEL_PORT=%q\n' "$PANEL_PORT"
@@ -130,7 +150,8 @@ cat <<EOF
   Просмотр (beets):  http://$IP:$WEB_PORT
   Управление:        sudo $BASE_DIR/muzick.sh help
   Чистая библиотека: $LIB_DIR
-  Исходники (только чтение): $SRC_DIR
+  Исходники (копирование): $SRC_DIR
+  Работа без копирования: $WORK_DIR
 ============================================================
 EOF
 if [ "$GENERATED" = 1 ]; then
