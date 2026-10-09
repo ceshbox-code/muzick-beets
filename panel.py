@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 SRC, WORK = "/downloads", "/work"
+WORK_LABEL = os.environ.get("WORK_DIR_HOST", "/work")
 DB, DIRECT_DB, LOGF = "/config/musiclibrary.db", "/config/musiclibrary-direct.db", "/config/import-all.log"
 DIRECT_CONFIG = "/config/config-direct.yaml"
 MB_RUN, MB_DONE, MB_LOG = "/config/mb.running", "/config/mb.done", "/config/import-mb.log"
@@ -223,7 +224,7 @@ def status():
                     "started": state["started"]},
             "log": list(lines), "import_log": tail(LOGF), "mb": mb_status(),
             "health": db_health(), "direct_items": direct_items, "direct_albums": direct_albums,
-            "direct_log": tail("/config/direct-import.log")}
+            "direct_log": tail("/config/direct-import.log"), "work_root": WORK_LABEL}
 
 
 def folders(mode="import"):
@@ -271,7 +272,7 @@ pre{margin:10px 0 0;background:#0b1020;color:#dce5f7;padding:14px;border-radius:
 <label for="srcfolder">Папка в исходной коллекции</label><select id="srcfolder"><option value="">Вся коллекция</option></select><div class="actions"><button class="primary run" onclick="run('import_tags','import')">Импорт по тегам</button><button class="run" onclick="run('import_mb','import')">С MusicBrainz</button><button class="run" onclick="run('import_single','import')">По отпечатку</button><button onclick="loadFolders('import')">Обновить папки</button></div></div>
 
 <div class="card span-6"><div class="headrow"><div><h2>2. Работа в выбранной папке</h2><div class="muted">Файлы остаются в исходных каталогах. Теги могут записываться непосредственно в файлы.</div></div><span class="badge">БЕЗ КОПИИ</span></div>
-<label for="directfolder">Папка внутри разрешённого корня</label><select id="directfolder"><option value="">Корневая папка</option></select><div class="actions"><button class="primary run" onclick="run('direct_tags','direct')">Обработать на месте по тегам</button><button class="run" onclick="run('direct_mb','direct')">Обработать на месте + MusicBrainz</button><button onclick="loadFolders('direct')">Обновить папки</button></div><div class="hint">Используется отдельная база. Перед записью тегов проверьте права доступа и сделайте резервную копию файлов.</div></div>
+<div class="hint" style="margin-top:0">Корень на NAS: <strong id="workroot">загрузка…</strong></div><label for="directfolder">Папка внутри разрешённого корня</label><select id="directfolder"><option value="">Корневая папка</option></select><div class="actions"><button class="primary run" onclick="run('direct_tags','direct')">Обработать на месте по тегам</button><button class="run" onclick="run('direct_mb','direct')">Обработать на месте + MusicBrainz</button><button onclick="loadFolders('direct')">Обновить папки</button></div><div class="hint">Используется отдельная база. Перед записью тегов проверьте права доступа и сделайте резервную копию файлов.</div></div>
 
 <div class="card span-8"><div class="headrow"><div><h2>Состояние задачи</h2><div class="muted">Последние сообщения процесса</div></div><button class="stop" id="stopbtn" onclick="stopJob()" disabled>Остановить</button></div><pre id="log">Задачи ещё не запускались.</pre></div>
 
@@ -294,7 +295,7 @@ async function loadFolders(mode){const sel=$(mode==='direct'?'directfolder':'src
 async function run(job,mode){const folder=mode==='direct'?$('directfolder').value:mode==='import'?$('srcfolder').value:'';const label=mode==='direct'?'без копирования':mode==='import'?'импорт с копированием':'инструмент';if(!confirm('Запустить «'+job+'» ('+label+')'+(folder?' для папки «'+folder+'»':'')+'?'))return;const r=await api('/api/run',{job,folder});if(r.error)alert(r.error);await refresh()}
 async function stopJob(){if(confirm('Остановить текущую задачу?')){const r=await api('/api/stop',{});if(r.error)alert(r.error);await refresh()}}
 async function refresh(){let s;try{s=await api('/api/status')}catch(e){$('connection').textContent='Нет соединения';return}
-$('connection').textContent='Панель подключена';$('items').textContent=fmt(s.items);$('albums').textContent=fmt(s.albums);$('directitems').textContent=fmt(s.direct_items);$('rate').textContent=fmt(s.rate);
+$('connection').textContent='Панель подключена';$('workroot').textContent=s.work_root||'/work';$('items').textContent=fmt(s.items);$('albums').textContent=fmt(s.albums);$('directitems').textContent=fmt(s.direct_items);$('rate').textContent=fmt(s.rate);
 const j=s.job;$('job').textContent=!j.name?'Задач ещё не запускали':(j.running?'Выполняется: ':'Последняя задача: ')+j.name+(j.rc!=null?' · код завершения '+j.rc:'');
 document.querySelectorAll('button.run').forEach(b=>b.disabled=j.running);$('stopbtn').disabled=!j.running;
 const log=$('log'),atEnd=log.scrollTop+log.clientHeight>=log.scrollHeight-20;log.textContent=(s.log||[]).join(String.fromCharCode(10))||'Нет сообщений';if(atEnd)log.scrollTop=log.scrollHeight;
