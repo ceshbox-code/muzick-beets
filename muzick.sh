@@ -50,8 +50,14 @@ fix_tags() {
 }
 
 beet_run() {
-  # Без VPN: локальные команды и импорт по готовым тегам.
+  # Интерактивные команды без VPN.
   docker run --rm -it "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+    /config/lockrun.py /lsiopy/bin/beet "$@"
+}
+
+beet_run_plain() {
+  # Без TTY — для перенаправления вывода и конвейеров.
+  docker run --rm "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
     /config/lockrun.py /lsiopy/bin/beet "$@"
 }
 
@@ -144,7 +150,7 @@ case "$cmd" in
   organize)
     if busy; then exit 1; fi
     echo "Предпросмотр перемещений (первые 40):"
-    { beet_run move -p | head -n 40; } || true
+    { beet_run_plain move -p | head -n 40; } || true
     read -r -p "Переместить файлы по новым путям? [y/N] " ans
     if [ "$ans" = y ]; then
       beet_run move
