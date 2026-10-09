@@ -71,6 +71,7 @@ else
 fi
 cp "$HERE/panel.py" "$BASE_DIR/config/panel.py"
 cp "$HERE/lockrun.py" "$BASE_DIR/config/lockrun.py"
+cp "$HERE/diagnose_duplicates.py" "$BASE_DIR/config/diagnose_duplicates.py"
 if [ -f "$HERE/fix_tags.py" ]; then
   cp "$HERE/fix_tags.py" "$BASE_DIR/config/fix_tags.py"
 fi
