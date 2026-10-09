@@ -11,7 +11,7 @@ ENV_FILE="${BASE_DIR:-/volume1/docker/beets}/muzick.env"
 # При повторном запуске сохраняем настройки из предыдущей установки.
 # Значения, переданные в окружении текущего запуска, имеют приоритет.
 OV_SRC="${SRC_DIR-}"; OV_LIB="${LIB_DIR-}"; OV_BASE="${BASE_DIR-}"
-OV_VPN="${VPN_CONTAINER-}"; OV_PANEL_PORT="${PANEL_PORT-}"; OV_WEB_PORT="${WEB_PORT-}"
+OV_VPN_SET="${VPN_CONTAINER+x}"; OV_VPN="${VPN_CONTAINER-}"; OV_PANEL_PORT="${PANEL_PORT-}"; OV_WEB_PORT="${WEB_PORT-}"
 OV_IMAGE="${IMAGE-}"; OV_TZ="${TZ_NAME-}"; OV_PASS="${PANEL_PASS-}"
 if [ -f "$ENV_FILE" ]; then
   # Файл создаётся этим установщиком и имеет права 600.
@@ -20,7 +20,7 @@ fi
 SRC_DIR="${OV_SRC:-${SRC_DIR:-/volume1/music}}"              # исходная коллекция, только чтение
 LIB_DIR="${OV_LIB:-${LIB_DIR:-/volume1/music_clean}}"        # чистая библиотека
 BASE_DIR="${OV_BASE:-${BASE_DIR:-/volume1/docker/beets}}"
-VPN_CONTAINER="${OV_VPN-${VPN_CONTAINER-VPN}}"
+if [ "$OV_VPN_SET" = x ]; then VPN_CONTAINER="$OV_VPN"; else VPN_CONTAINER="${VPN_CONTAINER:-VPN}"; fi
 PANEL_PORT="${OV_PANEL_PORT:-${PANEL_PORT:-8338}}"
 WEB_PORT="${OV_WEB_PORT:-${WEB_PORT:-8337}}"
 IMAGE="${OV_IMAGE:-${IMAGE:-lscr.io/linuxserver/beets:latest}}"
