@@ -74,12 +74,12 @@ up() {
   docker run -d --name beets --restart unless-stopped \
     -e PUID="$PUID" -e PGID="$PGID" -e TZ="$TZ_NAME" \
     -p "$WEB_PORT:8337" \
-    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" -v "$WORK_DIR:/work:rw" \
+    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" \
     "$IMAGE" >/dev/null
   docker run -d --name beets-panel --restart unless-stopped \
     --user "$PUID:$PGID" \
     -p "$PANEL_PORT:8338" \
-    -e BEETSDIR=/config -e HOME=/config -e PYTHONUNBUFFERED=1 -e PANEL_PASS="$PANEL_PASS" \
+    -e BEETSDIR=/config -e HOME=/config -e PYTHONUNBUFFERED=1 -e PANEL_PASS="$PANEL_PASS" -e WORK_DIR_HOST="$WORK_DIR" \
     -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" -v "$WORK_DIR:/work:rw" \
     --entrypoint python3 "$IMAGE" /config/panel.py >/dev/null
 }
