@@ -23,6 +23,11 @@ JOBS = {
     "albums":        ("Список альбомов", ["ls", "-a", "-f", "$albumartist — $album"], False),
 }
 
+DIRECT_JOBS = {
+    "direct_tags": ("Работа в указанной папке без копирования", ["import", "-A", "-q", "-l", "/config/direct-import.log"], True),
+    "direct_mb": ("Работа в папке без копирования + MusicBrainz", ["import", "-q", "-l", "/config/direct-import.log"], True),
+}
+
 lock = threading.Lock()
 state = {"proc": None, "name": "", "started": 0.0, "lock_handle": None}
 lines = deque(maxlen=600)
