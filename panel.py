@@ -59,7 +59,7 @@ def db_counts(db=DB):
 
 def db_health():
     out = {"no_artist": 0, "no_title": 0, "no_album": 0, "no_albumartist": 0,
-           "duplicate_track_groups": 0, "duplicate_album_groups": 0,
+           "duplicate_track_groups": 0, "duplicate_same_album_groups": 0, "duplicate_album_groups": 0,
            "missing_mb_trackid": 0, "missing_mb_albumid": 0}
     try:
         con = sqlite3.connect("file:%s?mode=ro" % DB, uri=True, timeout=5)
@@ -78,6 +78,10 @@ def db_health():
             out["duplicate_track_groups"] = con.execute("""select count(*) from (
               select 1 from items where trim(coalesce(artist,''))<>'' and trim(coalesce(title,''))<>''
               group by lower(trim(artist)), lower(trim(title)) having count(*)>1)""").fetchone()[0]
+            out["duplicate_same_album_groups"] = con.execute("""select count(*) from (
+              select 1 from items where trim(coalesce(artist,''))<>'' and trim(coalesce(title,''))<>''
+                and trim(coalesce(album,''))<>''
+              group by lower(trim(artist)), lower(trim(title)), lower(trim(album)) having count(*)>1)""").fetchone()[0]
             out["duplicate_album_groups"] = con.execute("""select count(*) from (
               select 1 from albums where trim(coalesce(albumartist,''))<>'' and trim(coalesce(album,''))<>''
               group by lower(trim(albumartist)), lower(trim(album)) having count(*)>1)""").fetchone()[0]
@@ -277,7 +281,7 @@ pre{margin:10px 0 0;background:#0b1020;color:#dce5f7;padding:14px;border-radius:
 <div class="card span-8"><div class="headrow"><div><h2>Состояние задачи</h2><div class="muted">Последние сообщения процесса</div></div><button class="stop" id="stopbtn" onclick="stopJob()" disabled>Остановить</button></div><pre id="log">Задачи ещё не запускались.</pre></div>
 
 <div class="card span-4"><h2>Качество метаданных</h2><div class="muted">Проверка основной базы</div><div class="health-list" style="margin-top:12px">
-<div class="health-item"><span>Без исполнителя</span><strong id="noartist">—</strong></div><div class="health-item"><span>Без названия</span><strong id="notitle">—</strong></div><div class="health-item"><span>Без альбома</span><strong id="noalbum">—</strong></div><div class="health-item"><span>Без исполнителя альбома</span><strong id="noalbumartist">—</strong></div><div class="health-item"><span>Группы совпадений треков</span><strong id="duptracks">—</strong></div><div class="health-item"><span>Группы совпадений альбомов</span><strong id="dupalbums">—</strong></div><div class="health-item"><span>Без MusicBrainz Track ID</span><strong id="nombtrack">—</strong></div><div class="health-item"><span>Без MusicBrainz Album ID</span><strong id="nombalbum">—</strong></div></div><p class="muted">Совпадение названий — повод проверить записи, а не автоматическая команда на удаление.</p></div>
+<div class="health-item"><span>Без исполнителя</span><strong id="noartist">—</strong></div><div class="health-item"><span>Без названия</span><strong id="notitle">—</strong></div><div class="health-item"><span>Без альбома</span><strong id="noalbum">—</strong></div><div class="health-item"><span>Без исполнителя альбома</span><strong id="noalbumartist">—</strong></div><div class="health-item"><span>Повтор исполнителя/названия</span><strong id="duptracks">—</strong></div><div class="health-item"><span>Повтор в одном альбоме</span><strong id="dupsamealbum">—</strong></div><div class="health-item"><span>Группы совпадений альбомов</span><strong id="dupalbums">—</strong></div><div class="health-item"><span>Без MusicBrainz Track ID</span><strong id="nombtrack">—</strong></div><div class="health-item"><span>Без MusicBrainz Album ID</span><strong id="nombalbum">—</strong></div></div><p class="muted">Совпадение названий — повод проверить записи, а не автоматическая команда на удаление.</p></div>
 
 <div class="card span-6"><h2>Инструменты</h2><div class="muted">Операции с основной базой</div><div class="actions"><button class="run" onclick="run('stats','tool')">Статистика beets</button><button class="run" onclick="run('albums','tool')">Список альбомов</button><button class="run" onclick="run('duplicates','tool')">Дубликаты beets</button><button class="run" onclick="run('no_artist','tool')">Без исполнителя</button><button class="run" onclick="run('fetchart','tool')">Загрузить обложки</button></div></div>
 
@@ -299,7 +303,7 @@ $('connection').textContent='Панель подключена';$('workroot').te
 const j=s.job;$('job').textContent=!j.name?'Задач ещё не запускали':(j.running?'Выполняется: ':'Последняя задача: ')+j.name+(j.rc!=null?' · код завершения '+j.rc:'');
 document.querySelectorAll('button.run').forEach(b=>b.disabled=j.running);$('stopbtn').disabled=!j.running;
 const log=$('log'),atEnd=log.scrollTop+log.clientHeight>=log.scrollHeight-20;log.textContent=(s.log||[]).join(String.fromCharCode(10))||'Нет сообщений';if(atEnd)log.scrollTop=log.scrollHeight;
-const h=s.health||{};for(const [id,key] of [['noartist','no_artist'],['notitle','no_title'],['noalbum','no_album'],['noalbumartist','no_albumartist'],['duptracks','duplicate_track_groups'],['dupalbums','duplicate_album_groups'],['nombtrack','missing_mb_trackid'],['nombalbum','missing_mb_albumid']])$(id).textContent=fmt(h[key]);
+const h=s.health||{};for(const [id,key] of [['noartist','no_artist'],['notitle','no_title'],['noalbum','no_album'],['noalbumartist','no_albumartist'],['duptracks','duplicate_track_groups'],['dupsamealbum','duplicate_same_album_groups'],['dupalbums','duplicate_album_groups'],['nombtrack','missing_mb_trackid'],['nombalbum','missing_mb_albumid']])$(id).textContent=fmt(h[key]);
 $('importlog').textContent=s.import_log||'(пусто)';$('directlog').textContent=s.direct_log||'(пусто)';
 const m=s.mb||{};$('mbbar').style.width=Math.min(100,m.pct||0)+'%';$('mbnums').textContent=fmt(m.matched)+' альбомов с MusicBrainz ID из '+fmt(m.albums);$('mbstate').textContent=m.running?'Выполняется':'Не запущено / завершено';$('mblog').textContent=m.log||'(пусто)'}
 loadFolders('import');loadFolders('direct');refresh();setInterval(refresh,2500);
