@@ -92,7 +92,8 @@ usage() {
   mb-all [запрос]    перетегирование всей библиотеки в фоне (прогресс в веб-панели)
   mb-stop            остановить перетегирование
   beet <аргументы>   любая команда beet (через VPN, если он запущен), например: beet import -s /downloads/Папка
-  dups               дубликаты альбомов и треков
+  dups               дубликаты альбомов и треков по правилам beets
+  dups-audit         read-only аудит повторяющихся записей SQLite
   logs               логи контейнеров
   up                 пересоздать контейнеры beets и beets-panel
   update             скачать свежий образ и пересоздать контейнеры
@@ -185,6 +186,10 @@ case "$cmd" in
   dups)
     docker exec beets /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet duplicates -a || true
     docker exec beets /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet duplicates || true
+    ;;
+  dups-audit)
+    docker run --rm "${COMMON[@]}" --entrypoint /lsiopy/bin/python3 "$IMAGE" \
+      /config/lockrun.py /lsiopy/bin/python3 /config/diagnose_duplicates.py
     ;;
   logs)
     for c in beets beets-panel beets-mb; do
