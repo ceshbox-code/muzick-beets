@@ -38,10 +38,12 @@ CLI и панель используют общий advisory lock в `config/.mu
 
 ## Дубликаты
 
+Команда `dups-audit` читает SQLite в режиме `mode=ro` и группирует подозрительные совпадения по пути, MusicBrainz ID и тегам. Она не меняет базу и не удаляет файлы.
+
 Не удаляйте файлы автоматически до проверки отчёта:
 
 ```sh
-sudo /volume1/docker/beets/muzick.sh dups
+sudo /volume1/docker/beets/muzick.sh dups-audit
 sudo /volume1/docker/beets/muzick.sh beet duplicates -a -p
 sudo /volume1/docker/beets/muzick.sh beet duplicates -p
 ```
