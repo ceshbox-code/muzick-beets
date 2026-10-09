@@ -87,11 +87,6 @@ def mb_status():
     except Exception:
         pass
     try:
-        with open(MB_LOG, encoding="utf-8", errors="replace") as f:
-            out["skipped"] = 0  # строки лога не равны количеству пропущенных альбомов
-    except OSError:
-        pass
-    try:
         mtimes = [os.path.getmtime(p) for p in (DB, MB_LOG) if os.path.exists(p)]
         if mtimes:
             out["idle"] = max(0, time.time() - max(mtimes))
