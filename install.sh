@@ -10,7 +10,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${BASE_DIR:-/volume1/docker/beets}/muzick.env"
 # При повторном запуске сохраняем настройки из предыдущей установки.
 # Значения, переданные в окружении текущего запуска, имеют приоритет.
-OV_SRC="${SRC_DIR-}"; OV_LIB="${LIB_DIR-}"; OV_BASE="${BASE_DIR-}"
+OV_SRC="${SRC_DIR-}"; OV_LIB="${LIB_DIR-}"; OV_WORK="${WORK_DIR-}"; OV_BASE="${BASE_DIR-}"
 OV_VPN_SET="${VPN_CONTAINER+x}"; OV_VPN="${VPN_CONTAINER-}"; OV_PANEL_PORT="${PANEL_PORT-}"; OV_WEB_PORT="${WEB_PORT-}"
 OV_IMAGE="${IMAGE-}"; OV_TZ="${TZ_NAME-}"; OV_PASS="${PANEL_PASS-}"
 if [ -f "$ENV_FILE" ]; then
@@ -19,6 +19,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 SRC_DIR="${OV_SRC:-${SRC_DIR:-/volume1/music}}"              # исходная коллекция, только чтение
 LIB_DIR="${OV_LIB:-${LIB_DIR:-/volume1/music_clean}}"        # чистая библиотека
+WORK_DIR="${OV_WORK:-${WORK_DIR:-$SRC_DIR}}"                # корень для работы без копирования
 BASE_DIR="${OV_BASE:-${BASE_DIR:-/volume1/docker/beets}}"
 if [ "$OV_VPN_SET" = x ]; then VPN_CONTAINER="$OV_VPN"; else VPN_CONTAINER="${VPN_CONTAINER:-VPN}"; fi
 PANEL_PORT="${OV_PANEL_PORT:-${PANEL_PORT:-8338}}"
@@ -35,6 +36,7 @@ die() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "запустите от root: sudo bash install.sh"
 command -v docker >/dev/null 2>&1 || die "Docker не найден (установите Container Manager в DSM)"
 [ -d "$SRC_DIR" ] || die "нет папки с музыкой: $SRC_DIR (задайте SRC_DIR=...)"
+mkdir -p "$WORK_DIR" || die "не удалось создать рабочую папку: $WORK_DIR"
 for f in muzick.sh panel.py config.yaml; do
   [ -f "$HERE/$f" ] || die "нет файла $f рядом с install.sh"
 done
@@ -56,7 +58,7 @@ echo "Пользователь для файлов: UID=$PUID GID=$PGID"
 
 # --- каталоги ---
 say "Каталоги"
-mkdir -p "$LIB_DIR" "$BASE_DIR/config"
+mkdir -p "$LIB_DIR" "$WORK_DIR" "$BASE_DIR/config"
 chown "$PUID:$PGID" "$LIB_DIR"
 chown -R "$PUID:$PGID" "$BASE_DIR"
 
@@ -69,6 +71,7 @@ else
   if [ -f "$CFG_FILE" ]; then cp "$CFG_FILE" "$CFG_FILE.bak"; fi
   cp "$HERE/config.yaml" "$CFG_FILE"
 fi
+cp "$HERE/config-direct.yaml" "$BASE_DIR/config/config-direct.yaml"
 cp "$HERE/panel.py" "$BASE_DIR/config/panel.py"
 cp "$HERE/lockrun.py" "$BASE_DIR/config/lockrun.py"
 cp "$HERE/diagnose_duplicates.py" "$BASE_DIR/config/diagnose_duplicates.py"
@@ -93,6 +96,7 @@ fi
 {
   printf 'SRC_DIR=%q\n' "$SRC_DIR"
   printf 'LIB_DIR=%q\n' "$LIB_DIR"
+  printf 'WORK_DIR=%q\n' "$WORK_DIR"
   printf 'BASE_DIR=%q\n' "$BASE_DIR"
   printf 'VPN_CONTAINER=%q\n' "$VPN_CONTAINER"
   printf 'PANEL_PORT=%q\n' "$PANEL_PORT"
@@ -146,7 +150,8 @@ cat <<EOF
   Просмотр (beets):  http://$IP:$WEB_PORT
   Управление:        sudo $BASE_DIR/muzick.sh help
   Чистая библиотека: $LIB_DIR
-  Исходники (только чтение): $SRC_DIR
+  Исходники (копирование): $SRC_DIR
+  Работа без копирования: $WORK_DIR
 ============================================================
 EOF
 if [ "$GENERATED" = 1 ]; then
