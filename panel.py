@@ -176,12 +176,29 @@ def folders():
     except OSError:
         return []
 
-
 PAGE = r"""<!doctype html><html lang="ru"><meta charset="utf-8">
+<link rel="apple-touch-icon" sizes="57x57" href="/fav.ico/apple-icon-57x57.png">
+<link rel="apple-touch-icon" sizes="60x60" href="/fav.ico/apple-icon-60x60.png">
+<link rel="apple-touch-icon" sizes="72x72" href="/fav.ico/apple-icon-72x72.png">
+<link rel="apple-touch-icon" sizes="76x76" href="/fav.ico/apple-icon-76x76.png">
+<link rel="apple-touch-icon" sizes="114x114" href="/fav.ico/apple-icon-114x114.png">
+<link rel="apple-touch-icon" sizes="120x120" href="/fav.ico/apple-icon-120x120.png">
+<link rel="apple-touch-icon" sizes="144x144" href="/fav.ico/apple-icon-144x144.png">
+<link rel="apple-touch-icon" sizes="152x152" href="/fav.ico/apple-icon-152x152.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/fav.ico/apple-icon-180x180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/fav.ico/android-icon-192x192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/fav.ico/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/fav.ico/favicon-96x96.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/fav.ico/favicon-16x16.png">
+<link rel="manifest" href="/fav.ico/manifest.json">
+<meta name="msapplication-TileColor" content="#ffffff">
+<meta name="msapplication-TileImage" content="/fav.ico/ms-icon-144x144.png">
+<meta name="theme-color" content="#ffffff">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Панель beets</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:860px;margin:1.5em auto;padding:0 1em;color:#222}
+
 h2{margin:.2em 0}h3{margin:1.2em 0 .4em}
 .card{border:1px solid #ddd;border-radius:8px;padding:12px 16px;margin:12px 0}
 .bar{background:#e3e3e3;border-radius:6px;overflow:hidden}
@@ -311,6 +328,35 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._auth():
             return
+    
+        # Отдача файлов из папки fav.ico/
+        if self.path.startswith('/fav.ico/'):
+            filename = self.path[9:]  # Убираем '/fav.ico/'
+            filepath = os.path.join(os.path.dirname(__file__), 'fav.ico', filename)
+        
+            # Защита от выхода за пределы папки
+            if not os.path.abspath(filepath).startswith(
+                os.path.abspath(os.path.join(os.path.dirname(__file__), 'fav.ico'))
+            ):
+                self.send_error(403)
+                return
+         
+            if os.path.exists(filepath) and os.path.isfile(filepath):
+                mime_types = {
+                    '.ico': 'image/x-icon',
+                    '.png': 'image/png',
+                    '.json': 'application/json',
+                    '.xml': 'application/xml'
+                }
+                ext = os.path.splitext(filename)[1]
+                content_type = mime_types.get(ext, 'application/octet-stream')
+            
+                with open(filepath, 'rb') as f:
+                    data = f.read()
+                self._send(data, content_type)
+                return
+    
+        # API endpoints
         if self.path == "/api/status":
             self._json(status())
         elif self.path == "/api/folders":
