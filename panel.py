@@ -108,6 +108,41 @@ def read_first(path):
         return None
 
 
+
+SETTINGS_FILE = "/config/ui-settings.json"
+DEFAULT_SETTINGS = {"autoRefresh": True, "autoFolders": True, "confirmTasks": True,
+                    "compactLogs": False, "showLogsHome": False}
+SETTINGS_LOCK = threading.Lock()
+
+
+def get_settings():
+    data = dict(DEFAULT_SETTINGS)
+    try:
+        with open(SETTINGS_FILE, encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, dict):
+            for key in DEFAULT_SETTINGS:
+                if isinstance(saved.get(key), bool):
+                    data[key] = saved[key]
+    except (OSError, ValueError):
+        pass
+    return data
+
+
+def save_settings(data):
+    clean = dict(DEFAULT_SETTINGS)
+    if not isinstance(data, dict):
+        return {"error": "ожидался объект настроек"}, 400
+    for key in DEFAULT_SETTINGS:
+        if isinstance(data.get(key), bool):
+            clean[key] = data[key]
+    with SETTINGS_LOCK:
+        tmp = SETTINGS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(clean, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, SETTINGS_FILE)
+    return clean, 200
+
 def mb_status():
     """Прогресс перетегирования через MusicBrainz (запуск: muzick.sh mb-all)."""
     out = {"running": os.path.exists(MB_RUN), "started": None, "rc": None, "idle": None,
@@ -350,6 +385,8 @@ class H(BaseHTTPRequestHandler):
             return
         if self.path == "/api/status":
             self._json(status())
+        elif self.path == "/api/settings":
+            self._json(get_settings())
         elif urlparse(self.path).path == "/api/folders":
             mode = parse_qs(urlparse(self.path).query).get("mode", ["import"])[0]
             self._json(folders("direct" if mode == "direct" else "import"))
@@ -365,7 +402,16 @@ class H(BaseHTTPRequestHandler):
             content_type = mimetypes.guess_type(icon_file)[0] or "application/octet-stream"
             self._send(data, content_type)
         else:
-            self._send(PAGE, "text/html; charset=utf-8")
+            dashboard = "/config/dashboard.html"
+            if os.path.isfile(dashboard):
+                try:
+                    with open(dashboard, encoding="utf-8") as f:
+                        page = f.read()
+                except OSError:
+                    page = PAGE
+            else:
+                page = PAGE
+            self._send(page, "text/html; charset=utf-8")
 
     def do_POST(self):
         if not self._auth():
@@ -375,7 +421,9 @@ class H(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
             body = {}
-        if self.path == "/api/run":
+        if self.path == "/api/settings":
+            res, code = save_settings(body)
+        elif self.path == "/api/run":
             res, code = start(body.get("job", ""), body.get("folder", ""))
         elif self.path == "/api/stop":
             res, code = stop()
