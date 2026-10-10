@@ -78,6 +78,7 @@ fi
   printf 'SRC_DIR=%q\n' "$SRC_DIR"
   printf 'LIB_DIR=%q\n' "$LIB_DIR"
   printf 'BASE_DIR=%q\n' "$BASE_DIR"
+  printf 'WORK_DIR=%q\n' "$SRC_DIR"
   printf 'VPN_CONTAINER=%q\n' "$VPN_CONTAINER"
   printf 'PANEL_PORT=%q\n' "$PANEL_PORT"
   printf 'WEB_PORT=%q\n' "$WEB_PORT"
