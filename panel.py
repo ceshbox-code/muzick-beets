@@ -1,4 +1,4 @@
-import os, sys, json, time, shutil, signal, sqlite3, base64, threading, subprocess, fcntl
+import os, sys, json, time, shutil, signal, sqlite3, base64, threading, subprocess, fcntl, mimetypes
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -248,7 +248,15 @@ def folders(mode="import"):
 
 PAGE = r"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark"><title>Muzick · beets</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/x-icon" href="/fav.ico/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/fav.ico/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/fav.ico/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/fav.ico/apple-icon-180x180.png">
+<link rel="manifest" href="/fav.ico/manifest.json">
+<meta name="msapplication-TileColor" content="#ffffff">
+<meta name="msapplication-config" content="/fav.ico/browserconfig.xml">
+<meta name="theme-color" content="#ffffff"><title>Muzick · beets</title>
 <style>
 :root{color-scheme:light dark;--bg:#f4f6fa;--card:#fff;--ink:#182230;--muted:#697586;--line:#e3e8ef;--accent:#5b5bd6;--soft:#eeefff;--good:#13795b;--warn:#a45b00;--danger:#b42318;--shadow:0 8px 28px rgba(24,34,48,.06)}
 @media(prefers-color-scheme:dark){:root{--bg:#10151d;--card:#171f2a;--ink:#e8edf5;--muted:#a4afbf;--line:#2a3544;--accent:#a5a5ff;--soft:#282845;--good:#58d5a3;--warn:#ffc078;--danger:#ff8a80;--shadow:none}}
@@ -345,6 +353,17 @@ class H(BaseHTTPRequestHandler):
         elif urlparse(self.path).path == "/api/folders":
             mode = parse_qs(urlparse(self.path).query).get("mode", ["import"])[0]
             self._json(folders("direct" if mode == "direct" else "import"))
+        elif urlparse(self.path).path.startswith("/fav.ico/"):
+            name = urlparse(self.path).path[len("/fav.ico/"):]
+            icon_root = os.path.realpath("/config/fav.ico")
+            icon_file = os.path.realpath(os.path.join(icon_root, name))
+            if not name or os.path.basename(name) != name or os.path.commonpath([icon_root, icon_file]) != icon_root or not os.path.isfile(icon_file):
+                self._send("Not found", "text/plain; charset=utf-8", 404)
+                return
+            with open(icon_file, "rb") as f:
+                data = f.read()
+            content_type = mimetypes.guess_type(icon_file)[0] or "application/octet-stream"
+            self._send(data, content_type)
         else:
             self._send(PAGE, "text/html; charset=utf-8")
 

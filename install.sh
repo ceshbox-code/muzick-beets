@@ -36,6 +36,7 @@ die() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "запустите от root: sudo bash install.sh"
 command -v docker >/dev/null 2>&1 || die "Docker не найден (установите Container Manager в DSM)"
 [ -d "$SRC_DIR" ] || die "нет папки с музыкой: $SRC_DIR (задайте SRC_DIR=...)"
+[ -d "$HERE/fav.ico" ] || die "нет каталога fav.ico рядом с install.sh"
 mkdir -p "$WORK_DIR" || die "не удалось создать рабочую папку: $WORK_DIR"
 for f in muzick.sh panel.py config.yaml config-direct.yaml; do
   [ -f "$HERE/$f" ] || die "нет файла $f рядом с install.sh"
@@ -73,6 +74,8 @@ else
 fi
 cp "$HERE/config-direct.yaml" "$BASE_DIR/config/config-direct.yaml"
 cp "$HERE/panel.py" "$BASE_DIR/config/panel.py"
+mkdir -p "$BASE_DIR/config/fav.ico"
+cp -R "$HERE/fav.ico/." "$BASE_DIR/config/fav.ico/"
 cp "$HERE/lockrun.py" "$BASE_DIR/config/lockrun.py"
 cp "$HERE/diagnose_duplicates.py" "$BASE_DIR/config/diagnose_duplicates.py"
 if [ -f "$HERE/fix_tags.py" ]; then
