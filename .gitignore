@@ -3,5 +3,5 @@
 *.log
 *.bak
 __pycache__/
-deploy.sh
+deploy_m.sh
 deploy.conf
