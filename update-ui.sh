@@ -28,7 +28,7 @@ cp "$ROOT/dashboard.html" "$BASE_DIR/config/dashboard.html"
 mkdir -p "$BASE_DIR/config/fav.ico"
 cp -R "$ROOT/fav.ico/." "$BASE_DIR/config/fav.ico/"
 # The project logo is maintained on the default branch; fetch it separately if needed.
-curl -fsSL --retry 2 "https://raw.githubusercontent.com/ceshbox-code/muzick-beets/main/fav.ico/logo.png" -o "$BASE_DIR/config/fav.ico/logo.png" || echo "Предупреждение: логотип не удалось скачать; существующий файл сохранён."
+curl -fsSL --retry 2 "https://raw.githubusercontent.com/ceshbox-code/muzick-beets/main/fav.ico/logo.png" -o "$TMP/logo.png" && cp "$TMP/logo.png" "$BASE_DIR/config/fav.ico/logo.png" || echo "Предупреждение: логотип не удалось скачать; существующий файл сохранён."
 chmod 644 "$BASE_DIR/config/panel.py" "$BASE_DIR/config/dashboard.html"
 echo "Перезапускаю только контейнер beets-panel…"
 docker restart beets-panel >/dev/null
