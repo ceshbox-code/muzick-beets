@@ -7,8 +7,16 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-SRC_DIR="${SRC_DIR:-/volume1/music}"              # исходная (перепутанная) коллекция, монтируется только для чтения
-LIB_DIR="${LIB_DIR:-/volume1/music_clean}"        # сюда beets собирает упорядоченную библиотеку
+# Сначала читаем существующие настройки, чтобы повторная установка их не сбросила.
+BASE_DIR="${BASE_DIR:-/volume1/docker/beets}"
+if [ -f "$BASE_DIR/.env" ]; then
+  set -a; . "$BASE_DIR/.env"; set +a
+elif [ -f "$BASE_DIR/muzick.env" ]; then
+  set -a; . "$BASE_DIR/muzick.env"; set +a
+fi
+
+SRC_DIR="${SRC_DIR:-/volume1/music}"              # исходная папка (для сценария загрузок укажите DOWNLOADS)
+LIB_DIR="${LIB_DIR:-/volume1/music_clean}"        # конечная музыкальная библиотека
 BASE_DIR="${BASE_DIR:-/volume1/docker/beets}"     # конфиг, база beets, панель
 VPN_CONTAINER="${VPN_CONTAINER-VPN}"              # имя VPN-контейнера; пусто = без VPN
 PANEL_PORT="${PANEL_PORT:-8338}"
@@ -18,14 +26,18 @@ TZ_NAME="${TZ_NAME:-Europe/Berlin}"
 PANEL_PASS="${PANEL_PASS:-}"
 RUN_USER="${RUN_USER:-${SUDO_USER:-}}"
 FORCE_CONFIG="${FORCE_CONFIG:-0}"
+DOCKER_ACCESS="${DOCKER_ACCESS:-1}"               # 1 = панель сама запускает задачи через VPN (нужен доступ к Docker)
+PANEL_FILE="${PANEL_FILE:-panel.py}"              # panel_classic.py = прежний вид панели
+WORK_DIR="${WORK_DIR:-$SRC_DIR}"                  # папка, где разрешена обработка «на месте» (панель, direct-*)
 
+cpf() { [ "$1" -ef "$2" ] || cp "$1" "$2"; }
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "запустите от root: sudo bash install.sh"
 command -v docker >/dev/null 2>&1 || die "Docker не найден (установите Container Manager в DSM)"
 [ -d "$SRC_DIR" ] || die "нет папки с музыкой: $SRC_DIR (задайте SRC_DIR=...)"
-for f in muzick.sh panel.py fix_tags.py config.yaml; do
+for f in muzick.sh panel.py fix_tags.py lockrun.py diagnose_duplicates.py config.yaml config-direct.yaml ui/index.html ui/app.css ui/app.js; do
   [ -f "$HERE/$f" ] || die "нет файла $f рядом с install.sh"
 done
 case "$PANEL_PASS" in
@@ -33,7 +45,10 @@ case "$PANEL_PASS" in
 esac
 
 # --- от чьего имени работать с файлами ---
-if [ -n "$RUN_USER" ] && [ "$RUN_USER" != root ] && id "$RUN_USER" >/dev/null 2>&1; then
+if [ -n "${FILE_UID:-}" ] && [ -n "${FILE_GID:-}" ]; then
+  PUID="$FILE_UID"
+  PGID="$FILE_GID"
+elif [ -n "$RUN_USER" ] && [ "$RUN_USER" != root ] && id "$RUN_USER" >/dev/null 2>&1; then
   PUID="$(id -u "$RUN_USER")"
   PGID="$(id -g "$RUN_USER")"
 else
@@ -55,17 +70,31 @@ if [ -f "$CFG_FILE" ] && [ "$FORCE_CONFIG" != 1 ]; then
   echo "config.yaml уже есть, оставляю как есть (FORCE_CONFIG=1 перезапишет, копия сохранится в .bak)"
 else
   if [ -f "$CFG_FILE" ]; then cp "$CFG_FILE" "$CFG_FILE.bak"; fi
-  cp "$HERE/config.yaml" "$CFG_FILE"
+  cpf "$HERE/config.yaml" "$CFG_FILE"
 fi
-cp "$HERE/panel.py" "$BASE_DIR/config/panel.py"
-cp "$HERE/fix_tags.py" "$BASE_DIR/config/fix_tags.py"
-cp "$HERE/muzick.sh" "$BASE_DIR/muzick.sh"
+cpf "$HERE/panel.py" "$BASE_DIR/config/panel.py"
+[ -f "$HERE/panel_classic.py" ] && cpf "$HERE/panel_classic.py" "$BASE_DIR/config/panel_classic.py"
+[ "$HERE/ui" -ef "$BASE_DIR/config/ui" ] || { rm -rf "$BASE_DIR/config/ui" && cp -r "$HERE/ui" "$BASE_DIR/config/ui"; }
+if [ -d "$HERE/fav.ico" ] && [ "$HERE" != "$BASE_DIR" ]; then
+  mkdir -p "$BASE_DIR/fav.ico" && cp -r "$HERE/fav.ico/." "$BASE_DIR/fav.ico/"
+fi
+cpf "$HERE/fix_tags.py" "$BASE_DIR/config/fix_tags.py"
+cpf "$HERE/lockrun.py" "$BASE_DIR/config/lockrun.py"
+cpf "$HERE/diagnose_duplicates.py" "$BASE_DIR/config/diagnose_duplicates.py"
+[ -f "$BASE_DIR/config/config-direct.yaml" ] || cp "$HERE/config-direct.yaml" "$BASE_DIR/config/config-direct.yaml"
+cpf "$HERE/muzick.sh" "$BASE_DIR/muzick.sh"
 chmod 755 "$BASE_DIR/muzick.sh"
 chown -R "$PUID:$PGID" "$BASE_DIR/config" "$BASE_DIR/muzick.sh"
 
 # --- пароль панели ---
-ENV_FILE="$BASE_DIR/muzick.env"
+ENV_FILE="$BASE_DIR/.env"
+LEGACY_ENV_FILE="$BASE_DIR/muzick.env"
 GENERATED=0
+# Совместимость: переносим старую конфигурацию, если .env ещё не создан.
+if [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
+  cp "$LEGACY_ENV_FILE" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+fi
 if [ -z "$PANEL_PASS" ] && [ -f "$ENV_FILE" ]; then
   PANEL_PASS="$(bash -c '. "$1"; printf %s "${PANEL_PASS:-}"' _ "$ENV_FILE")"
 fi
@@ -78,7 +107,9 @@ fi
   printf 'SRC_DIR=%q\n' "$SRC_DIR"
   printf 'LIB_DIR=%q\n' "$LIB_DIR"
   printf 'BASE_DIR=%q\n' "$BASE_DIR"
-  printf 'WORK_DIR=%q\n' "$SRC_DIR"
+  printf 'WORK_DIR=%q\n' "$WORK_DIR"
+  printf 'DOCKER_ACCESS=%q\n' "$DOCKER_ACCESS"
+  printf 'PANEL_FILE=%q\n' "$PANEL_FILE"
   printf 'VPN_CONTAINER=%q\n' "$VPN_CONTAINER"
   printf 'PANEL_PORT=%q\n' "$PANEL_PORT"
   printf 'WEB_PORT=%q\n' "$WEB_PORT"
@@ -89,10 +120,32 @@ fi
   printf 'PANEL_PASS=%q\n' "$PANEL_PASS"
 } > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
+# Оставляем совместимый файл для старых скриптов/установок.
+cp "$ENV_FILE" "$LEGACY_ENV_FILE"
+chmod 600 "$LEGACY_ENV_FILE"
 
 # --- контейнеры ---
 say "Скачиваю образ $IMAGE (первый раз может занять несколько минут)"
 docker pull "$IMAGE" >/dev/null || die "не удалось скачать образ"
+
+say "Проверка конфига beets"
+# В существующий конфиг добавляем настройки, из-за отсутствия которых повторный импорт добавляет дубли.
+if ! grep -q '^ *incremental:' "$CFG_FILE" || ! grep -q '^ *duplicate_action:' "$CFG_FILE"; then
+  cp "$CFG_FILE" "$CFG_FILE.pre-install.bak"
+  grep -q '^ *incremental:' "$CFG_FILE" || \
+    sed -i 's/^\( *\)copy: yes/\1copy: yes\n\1incremental: yes/' "$CFG_FILE"
+  grep -q '^ *duplicate_action:' "$CFG_FILE" || \
+    sed -i 's/^\( *\)copy: yes/\1copy: yes\n\1duplicate_action: skip/' "$CFG_FILE"
+  if docker run --rm -e BEETSDIR=/config -v "$BASE_DIR/config:/config" --entrypoint /lsiopy/bin/beet \
+       "$IMAGE" config >/dev/null 2>&1; then
+    echo "В блок import добавлены incremental и duplicate_action (копия: config.yaml.pre-install.bak)"
+  else
+    cp "$CFG_FILE.pre-install.bak" "$CFG_FILE"
+    echo "Не удалось безопасно изменить config.yaml, оставлен прежний. Добавьте в блок import вручную: incremental: yes и duplicate_action: skip"
+  fi
+else
+  echo "Конфиг в порядке."
+fi
 
 say "Запускаю контейнеры"
 bash "$BASE_DIR/muzick.sh" up
@@ -131,9 +184,15 @@ cat <<EOF
   Просмотр (beets):  http://$IP:$WEB_PORT
   Управление:        sudo $BASE_DIR/muzick.sh help
   Чистая библиотека: $LIB_DIR
-  Исходники (только чтение): $SRC_DIR
+  Папка обработки:     $SRC_DIR
 ============================================================
 EOF
 if [ "$GENERATED" = 1 ]; then
   echo "Пароль панели сгенерирован автоматически, он сохранён в $ENV_FILE."
+fi
+if [ "$DOCKER_ACCESS" = 1 ]; then
+  echo
+  echo "Панели выдан доступ к Docker, чтобы запускать задачи через VPN без терминала."
+  echo "Он даёт панели широкие права на NAS, поэтому держите её только в локальной сети."
+  echo "Отключить: DOCKER_ACCESS=0 sudo -E bash install.sh (шаги через VPN тогда будут недоступны)."
 fi

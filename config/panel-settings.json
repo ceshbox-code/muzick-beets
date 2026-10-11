@@ -1,0 +1,26 @@
+{
+ "steps": {
+  "scan": true,
+  "encoding": true,
+  "artists": true,
+  "musicbrainz": true,
+  "fingerprint": true,
+  "covers": true,
+  "report": true
+ },
+ "confirm": true,
+ "organize_after": true,
+ "copy_mode": "move",
+ "path_style": "year",
+ "covers_on_import": true,
+ "net_mode": "auto",
+ "vpn_container": "VPN",
+ "schedule": {
+  "enabled": false,
+  "every_hours": 24
+ },
+ "folder_paths": {
+  "source": "",
+  "library": ""
+ }
+}

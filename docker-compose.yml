@@ -1,3 +1,5 @@
+# Необязательная альтернатива muzick.sh up (рекомендуется именно muzick.sh up: он сам подставляет пути и права).
+# Подставьте свои значения PUID/PGID и пути. Строка с docker.sock нужна, чтобы панель запускала задачи через VPN.
 services:
   beets:
     image: lscr.io/linuxserver/beets:latest
@@ -11,7 +13,33 @@ services:
       - /volume1/music_clean:/music
       - /volume1/music:/downloads:ro
     ports:
-      - 8337:8337
+      - "8337:8337"
+    restart: unless-stopped
+
+  beets-panel:
+    image: lscr.io/linuxserver/beets:latest
+    container_name: beets-panel
+    user: "1026:100"
+    entrypoint: ["python3", "/config/panel.py"]
+    environment:
+      - BEETSDIR=/config
+      - HOME=/config
+      - PYTHONUNBUFFERED=1
+      - PANEL_PASS=${PANEL_PASS:-}
+      - MUZICK_IMAGE=lscr.io/linuxserver/beets:latest
+      - HOST_CONFIG=/volume1/docker/beets/config
+      - HOST_LIB=/volume1/music_clean
+      - HOST_SRC=/volume1/music
+      - VPN_CONTAINER=VPN
+      - FILE_UID=1026
+      - FILE_GID=100
+    volumes:
+      - /volume1/docker/beets/config:/config
+      - /volume1/music_clean:/music
+      - /volume1/music:/downloads:ro
+      - /volume1/docker/beets/fav.ico:/fav.ico:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    # group_add: ["<gid группы docker на NAS>"]   # нужно, если панель работает не от root
     ports:
-      - 8337:8337
+      - "8338:8338"
     restart: unless-stopped

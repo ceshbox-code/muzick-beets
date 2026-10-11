@@ -1,0 +1,31 @@
+directory: /work
+library: /config/musiclibrary-direct.db
+
+plugins: chroma fetchart embedart duplicates edit info
+
+import:
+  copy: no
+  move: no
+  write: yes
+  autotag: yes
+  timid: no
+  log: /config/direct-import.log
+  quiet_fallback: skip
+
+chroma:
+  auto: yes
+
+fetchart:
+  auto: yes
+
+embedart:
+  auto: yes
+
+id3v23: yes
+
+paths:
+  default: $albumartist/$album%aunique{}/$track - $title
+  comp: Compilations/$album%aunique{}/$track - $title
+  singleton: Non-Album/$artist/$title
+
+ignore: [".*", "*~", "System Volume Information", "lost+found", "@eaDir", "#recycle"]

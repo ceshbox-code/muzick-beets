@@ -1,0 +1,43 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check shell syntax
+        run: bash -n install.sh muzick.sh
+      - name: Compile Python files
+        run: python -m py_compile panel.py lockrun.py diagnose_duplicates.py
+      - name: Test read-only duplicate audit
+        run: |
+          python - <<'PY'
+          import os, sqlite3, subprocess, tempfile
+          with tempfile.TemporaryDirectory() as d:
+              db = os.path.join(d, "musiclibrary.db")
+              con = sqlite3.connect(db)
+              con.executescript("""
+                CREATE TABLE items (id INTEGER PRIMARY KEY, path TEXT, artist TEXT, title TEXT, mb_trackid TEXT);
+                CREATE TABLE albums (id INTEGER PRIMARY KEY, albumartist TEXT, album TEXT, mb_albumid TEXT);
+                INSERT INTO items(path, artist, title, mb_trackid) VALUES
+                  ('/music/a.mp3','Artist','Song','track-1'),
+                  ('/music/b.mp3','artist','song','track-1');
+                INSERT INTO albums(albumartist, album, mb_albumid) VALUES
+                  ('Artist','Album','album-1'),
+                  ('artist','album','album-1');
+              """)
+              con.commit()
+              con.close()
+              p = subprocess.run(["python", "diagnose_duplicates.py", db], text=True, capture_output=True)
+              assert p.returncode == 0, p.stderr
+              assert "одинаковый MusicBrainz track ID" in p.stdout
+              assert "одинаковые albumartist + album" in p.stdout
+              assert "только чтение" in p.stdout
+          PY

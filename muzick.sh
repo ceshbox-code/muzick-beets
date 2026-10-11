@@ -5,7 +5,13 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-. "$HERE/muzick.env"
+if [ -f "$HERE/.env" ]; then
+  . "$HERE/.env"
+elif [ -f "$HERE/muzick.env" ]; then
+  . "$HERE/muzick.env"
+else
+  echo "Не найден .env или muzick.env рядом с muzick.sh" >&2; exit 1
+fi
 
 CFG="$BASE_DIR/config"
 SELF="$HERE/muzick.sh"
@@ -15,7 +21,7 @@ COMMON=(
   -e BEETSDIR=/config -e HOME=/config -e PYTHONUNBUFFERED=1
   -v "$CFG:/config"
   -v "$LIB_DIR:/music"
-  -v "$SRC_DIR:/downloads:ro"
+  -v "$SRC_DIR:/downloads:rw"
   -v "$WORK_DIR:/work:rw"
 )
 
@@ -30,6 +36,10 @@ vpn_net() {
 busy() {
   if docker ps --format '{{.Names}}' | grep -qx beets-mb; then
     echo "Уже идёт перетегирование (контейнер beets-mb). Остановить: $SELF mb-stop"
+    return 0
+  fi
+  if docker ps --format '{{.Names}}' | grep -qx beets-single; then
+    echo "Уже идёт определение по отпечатку (контейнер beets-single). Остановить: $SELF single-stop"
     return 0
   fi
   if docker top beets-panel 2>/dev/null | grep -Eq 'beet .*import|beet import'; then
@@ -74,14 +84,26 @@ up() {
   docker run -d --name beets --restart unless-stopped \
     -e PUID="$PUID" -e PGID="$PGID" -e TZ="$TZ_NAME" \
     -p "$WEB_PORT:8337" \
-    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" \
+    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:rw" \
     "$IMAGE" >/dev/null
+  # Доступ к Docker нужен панели, чтобы запускать задачи MusicBrainz через VPN без терминала.
+  # Отключается параметром DOCKER_ACCESS=0 при установке.
+  local extra=()
+  if [ "${DOCKER_ACCESS:-1}" = 1 ] && [ -S /var/run/docker.sock ]; then
+    extra+=(-v /var/run/docker.sock:/var/run/docker.sock --group-add "$(stat -c %g /var/run/docker.sock)")
+  fi
+  if [ -d "$BASE_DIR/fav.ico" ]; then
+    extra+=(-v "$BASE_DIR/fav.ico:/fav.ico:ro")
+  fi
   docker run -d --name beets-panel --restart unless-stopped \
     --user "$PUID:$PGID" \
     -p "$PANEL_PORT:8338" \
     -e BEETSDIR=/config -e HOME=/config -e PYTHONUNBUFFERED=1 -e PANEL_PASS="$PANEL_PASS" -e WORK_DIR_HOST="$WORK_DIR" \
-    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:ro" -v "$WORK_DIR:/work:rw" \
-    --entrypoint python3 "$IMAGE" /config/panel.py >/dev/null
+    -e MUZICK_IMAGE="$IMAGE" -e HOST_CONFIG="$CFG" -e HOST_LIB="$LIB_DIR" -e HOST_SRC="$SRC_DIR" \
+    -e VPN_CONTAINER="${VPN_CONTAINER:-VPN}" -e FILE_UID="$PUID" -e FILE_GID="$PGID" \
+    -v "$CFG:/config" -v "$LIB_DIR:/music" -v "$SRC_DIR:/downloads:rw" -v "$WORK_DIR:/work:rw" \
+    ${extra[@]+"${extra[@]}"} \
+    --entrypoint python3 "$IMAGE" "/config/${PANEL_FILE:-panel.py}" >/dev/null
 }
 
 usage() {
@@ -100,6 +122,8 @@ usage() {
   mb-test <артист>   интерактивное перетегирование одного исполнителя через MusicBrainz (VPN)
   mb-all [запрос]    перетегирование всей библиотеки в фоне (прогресс в веб-панели)
   mb-stop            остановить перетегирование
+  single [папка]     импорт отдельных треков по звуковому отпечатку в фоне через VPN (прогресс в панели)
+  single-stop        остановить определение по отпечатку
   beet <аргументы>   любая команда beet (через VPN, если он запущен), например: beet import -s /downloads/Папка
   dups               дубликаты альбомов и треков по правилам beets
   dups-audit         read-only аудит повторяющихся записей SQLite
@@ -124,7 +148,7 @@ case "$cmd" in
     up
     ;;
   down)
-    docker rm -f beets beets-panel beets-mb 2>/dev/null || true
+    docker rm -f beets beets-panel beets-mb beets-single 2>/dev/null || true
     ;;
   status)
     docker ps -a --filter name=beets --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
@@ -195,6 +219,33 @@ case "$cmd" in
       rm -f /config/mb.running' sh "$@" >/dev/null
     echo "Запущено в фоне. Прогресс: веб-панель, блок «Перетегирование через MusicBrainz»."
     ;;
+  single)
+    if busy; then exit 1; fi
+    sub="${1:-}"
+    case "$sub" in /*|..|../*|*/../*|*/..|./*|*/./*|.) echo "Укажите относительную папку внутри SRC_DIR без сегментов . или .." >&2; exit 2 ;; esac
+    host_dir="$SRC_DIR${sub:+/$sub}"
+    [ -d "$host_dir" ] || { echo "Нет папки: $host_dir"; exit 1; }
+    if [ -z "$(vpn_net)" ]; then
+      echo "Внимание: VPN-контейнер '${VPN_CONTAINER:-}' не запущен, MusicBrainz и AcoustID могут быть недоступны."
+    fi
+    total="$(find "$host_dir" -type f \( -iname '*.mp3' -o -iname '*.flac' -o -iname '*.m4a' -o -iname '*.mp4' -o -iname '*.ogg' -o -iname '*.opus' -o -iname '*.wav' -o -iname '*.wma' -o -iname '*.ape' -o -iname '*.wv' -o -iname '*.aif' -o -iname '*.aiff' \) -not -path '*/@eaDir/*' | wc -l)"
+    printf '%s %s %s\n' "$(date +%s)" "$total" "${sub:-вся коллекция}" > "$CFG/single.info"
+    docker rm -f beets-single >/dev/null 2>&1 || true
+    # shellcheck disable=SC2046
+    docker run -d --name beets-single $(vpn_net) "${COMMON[@]}" --entrypoint sh "$IMAGE" -c '
+      : > /config/import-single.log
+      rm -f /config/single.done
+      touch /config/single.running
+      /lsiopy/bin/python3 /config/lockrun.py /lsiopy/bin/beet import -s -q --noincremental -l /config/import-single.log "$1"
+      echo $? > /config/single.done
+      rm -f /config/single.running' sh "/downloads${sub:+/$sub}" >/dev/null
+    echo "Запущено в фоне ($total файлов). Прогресс: веб-панель, блок «Треки по отпечатку»."
+    ;;
+  single-stop)
+    docker rm -f beets-single >/dev/null 2>&1 || true
+    rm -f "$CFG/single.running"
+    echo "Остановлено."
+    ;;
   mb-stop)
     docker rm -f beets-mb >/dev/null 2>&1 || true
     rm -f "$CFG/mb.running"
@@ -212,7 +263,7 @@ case "$cmd" in
       /config/lockrun.py /lsiopy/bin/python3 /config/diagnose_duplicates.py
     ;;
   logs)
-    for c in beets beets-panel beets-mb; do
+    for c in beets beets-panel beets-mb beets-single; do
       if docker ps -a --format '{{.Names}}' | grep -qx "$c"; then
         echo "=== $c ==="
         docker logs --tail 20 "$c" 2>&1

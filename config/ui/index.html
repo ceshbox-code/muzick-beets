@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#35454f">
+<title>Muzick: порядок в вашей музыке</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/fav/favicon-32x32.png">
+<link rel="apple-touch-icon" href="/fav/apple-icon-180x180.png">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <img id="logo" class="logo" src="/logo.png" width="44" height="44" alt="">
+      <div>
+        <div class="brand-name">Muzick</div>
+        <div class="brand-sub">Порядок в вашей музыке</div>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Разделы">
+      <button class="tab is-active" data-tab="home">Главная</button>
+      <button class="tab" data-tab="settings">Настройки</button>
+      <button class="tab" data-tab="history">История</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===================== ГЛАВНАЯ ===================== -->
+  <section id="tab-home" class="view">
+
+    <div class="card hero">
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-n" id="n-tracks">–</div><div class="stat-l">треков</div></div>
+        <div class="stat"><div class="stat-n" id="n-albums">–</div><div class="stat-l">альбомов</div></div>
+        <div class="stat"><div class="stat-n" id="n-artists">–</div><div class="stat-l">исполнителей</div></div>
+      </div>
+      <div class="hero-action">
+        <button id="btn-main" class="btn btn-primary btn-xl" type="button">Навести порядок</button>
+        <div id="plan-note" class="hero-note"></div>
+      </div>
+    </div>
+
+    <div id="banner" class="banner" hidden></div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 id="steps-title">Что будет сделано</h2>
+        <a href="#settings" class="link" id="link-settings">Изменить</a>
+      </div>
+      <div id="overall" class="bar" hidden><div id="overall-bar"></div></div>
+      <ol id="steps" class="steps"></ol>
+    </div>
+
+    <div class="card" id="todo-card" hidden>
+      <h2>Что можно улучшить</h2>
+      <ul id="todo" class="todo"></ul>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Всё ли в порядке</h2>
+        <button id="btn-net" class="btn btn-ghost btn-sm" type="button">Проверить подключение</button>
+      </div>
+      <ul id="health" class="health"></ul>
+    </div>
+
+  </section>
+
+  <!-- ===================== НАСТРОЙКИ ===================== -->
+  <section id="tab-settings" class="view" hidden>
+
+    <div class="card">
+      <h2>Что делать автоматически</h2>
+      <p class="muted">Эти шаги выполняются по кнопке «Навести порядок». Любой из них можно отключить.</p>
+      <div id="set-steps" class="rows"></div>
+    </div>
+
+    <div class="card">
+      <h2>Осторожность</h2>
+      <div class="rows">
+        <label class="row">
+          <span class="row-text"><b>Спрашивать перед изменением названий</b>
+            <small>Перед правкой тегов покажу, что именно изменится, и подожду вашего «Применить».</small></span>
+          <span class="switch"><input type="checkbox" data-key="confirm"><i></i></span>
+        </label>
+        <label class="row">
+          <span class="row-text"><b>Раскладывать файлы по папкам после правок</b>
+            <small>Когда названия исправлены, файлы сами переедут в нужные папки.</small></span>
+          <span class="switch"><input type="checkbox" data-key="organize_after"><i></i></span>
+        </label>
+        <label class="row">
+          <span class="row-text"><b>Скачивать обложки при сборе музыки</b>
+            <small>Картинки альбомов добавляются в файлы и папки.</small></span>
+          <span class="switch"><input type="checkbox" data-key="covers_on_import"><i></i></span>
+        </label>
+      </div>
+      <h3>Что делать с исходными файлами</h3>
+      <div class="choices" data-radio="copy_mode">
+        <label class="choice"><input type="radio" name="copy_mode" value="copy">
+          <span><b>Копировать</b> <em>безопаснее</em><small>Исходная папка останется нетронутой. Нужно свободное место.</small></span></label>
+        <label class="choice"><input type="radio" name="copy_mode" value="move">
+          <span><b>Переносить</b><small>Для папки загрузок: успешно импортированные аудиофайлы перемещаются в библиотеку. Необработанные файлы сохраняются.</small></span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Как называть папки</h2>
+      <div class="choices" data-radio="path_style">
+        <label class="choice"><input type="radio" name="path_style" value="simple">
+          <span><b>Исполнитель / Альбом / Песня</b><small class="path">Queen / A Night at the Opera / 01 - Death on Two Legs.mp3</small></span></label>
+        <label class="choice"><input type="radio" name="path_style" value="year">
+          <span><b>Исполнитель / Год и альбом / Песня</b><small class="path">Queen / 1975 - A Night at the Opera / 01 - Death on Two Legs.mp3</small></span></label>
+      </div>
+      <p class="muted">Новое правило применится к следующему наведению порядка.</p>
+    </div>
+
+    <div class="card">
+      <h2>Интернет и VPN</h2>
+      <p class="muted">Для точных названий и обложек нужна база MusicBrainz. Если она у вас не открывается, панель умеет работать через VPN.</p>
+      <div class="choices" data-radio="net_mode">
+        <label class="choice"><input type="radio" name="net_mode" value="auto">
+          <span><b>Автоматически</b> <em>рекомендуется</em><small>Если база доступна напрямую, использую её. Если нет, пойду через VPN.</small></span></label>
+        <label class="choice"><input type="radio" name="net_mode" value="vpn">
+          <span><b>Всегда через VPN</b><small>Нужен запущенный VPN-контейнер на NAS.</small></span></label>
+        <label class="choice"><input type="radio" name="net_mode" value="direct">
+          <span><b>Только напрямую</b><small>Без VPN. Если база недоступна, шаги с интернетом будут пропущены.</small></span></label>
+      </div>
+      <label class="field">
+        <span>Имя VPN-контейнера</span>
+        <input type="text" id="vpn-name" maxlength="64" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="inline">
+        <button id="btn-net2" class="btn btn-ghost btn-sm" type="button">Проверить подключение</button>
+        <span id="net-result" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>По расписанию</h2>
+      <label class="row">
+        <span class="row-text"><b>Проверять новые файлы сам</b>
+          <small>Проверка раз в минуту. При появлении новых аудиофайлов запускается обработка. Чтобы загрузки исчезали после импорта, выберите «Переносить» ниже.</small></span>
+        <span class="switch"><input type="checkbox" id="sch-enabled"><i></i></span>
+      </label>
+      <p class="muted">Папка проверяется примерно раз в минуту. Обработка начинается после двух проверок без изменений файлов.</p>
+    </div>
+
+    <div class="card">
+      <h2>Папки</h2>
+      <p class="muted">Выбирайте папки внутри смонтированных каталогов. Для изменения корневых каталогов NAS используйте .env и затем выполните <code>muzick.sh up</code>.</p>
+      <div class="folder-setting">
+        <div><b>Папка загрузок</b><div class="muted" id="path-src">–</div></div>
+        <button class="btn btn-ghost btn-sm" id="pick-source" type="button">Выбрать</button>
+      </div>
+      <div class="folder-setting">
+        <div><b>Музыкальная библиотека</b><div class="muted" id="path-lib">–</div></div>
+        <button class="btn btn-ghost btn-sm" id="pick-library" type="button">Выбрать</button>
+      </div>
+      <dl class="paths"><dt>Управление Docker</dt><dd id="path-docker">–</dd></dl>
+      <div id="folder-picker" class="folder-picker" hidden>
+        <div class="folder-picker-head"><b id="picker-title">Выбор папки</b><button class="btn btn-ghost btn-sm" id="picker-close" type="button">Закрыть</button></div>
+        <div class="muted" id="picker-path">/</div>
+        <div id="picker-list" class="folder-list"></div>
+        <div class="folder-picker-actions"><button class="btn btn-primary" id="picker-select" type="button">Выбрать эту папку</button></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ===================== ИСТОРИЯ ===================== -->
+  <section id="tab-history" class="view" hidden>
+    <div class="card">
+      <h2>Что уже было сделано</h2>
+      <div id="history" class="history"></div>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

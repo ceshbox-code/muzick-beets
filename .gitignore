@@ -1,7 +1,21 @@
+# локальные настройки и секреты
+.env
 *.env
+deploy.sh
+deploy.conf
+
+# базы, логи, резервные копии
 *.db
 *.log
 *.bak
+*.bak-*
+*.pre-install.bak
 __pycache__/
-deploy_m.sh
-deploy.conf
+
+# рабочие файлы, которые создают контейнеры на NAS (не исходники)
+config/.cache/
+config/.muzick.lock
+config/*.pickle
+config/mb.*
+config/single.*
+config/*.tsv
