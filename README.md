@@ -71,11 +71,11 @@
 sudo -i
 mkdir -p /volume1/docker
 cd /volume1/docker
-git clone <URL-ВАШЕГО-РЕПОЗИТОРИЯ> muzick-beets-panel
+git clone https://github.com/ceshbox-code/muzick-beets muzick-beets-panel
 cd muzick-beets-panel
 ```
 
-Замените `<URL-ВАШЕГО-РЕПОЗИТОРИЯ>` на адрес репозитория GitHub. Если Git не установлен, можно загрузить ZIP-архив репозитория и распаковать его в этот каталог.
+Если Git не установлен, можно загрузить ZIP-архив репозитория и распаковать его в этот каталог.
 
 ### 2. Подготовьте каталоги
 
@@ -117,7 +117,7 @@ PGID=100
 PANEL_PASS=ЗАМЕНИТЕ_НА_СЛОЖНЫЙ_ПАРОЛЬ
 ```
 
-Значения `SRC_DIR`, `LIB_DIR`, `WORK_DIR`, `PUID`, `PGID`, `TZ_NAME` и `VPN_CONTAINER` — примеры. Укажите реальные значения для своего NAS. Если VPN для задач MusicBrainz не используется, задайте `VPN_CONTAINER=`. Не оставляйте пароль `CHANGE_ME` и не публикуйте `.env` в GitHub.
+Значения `SRC_DIR`, `LIB_DIR`, `WORK_DIR`, `PUID`, `PGID`, `TZ_NAME` и `VPN_CONTAINER` — примеры. Укажите реальные значения для своего NAS. Если VPN для задач MusicBrainz не используется, задайте `VPN_CONTAINER=`. Не оставляйте пароль `"ЗАМЕНИТЕ_НА_СЛОЖНЫЙ_ПАРОЛЬ"` и не публикуйте `.env` в GitHub.
 
 ### 4. Запустите установщик
 
@@ -285,7 +285,16 @@ docker logs --tail 150 beets
 
 ## Лицензия
 
-Перед публикацией укажите здесь лицензию проекта и проверьте лицензии используемых зависимостей и Docker-образа. Пока лицензия явно не добавлена в репозиторий, не следует считать проект лицензированным для свободного повторного использования.
+MIT License
+
+Copyright (c) 2026 Al_F
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## Участие в разработке
 
